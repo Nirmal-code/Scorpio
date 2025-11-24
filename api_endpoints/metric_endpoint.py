@@ -18,8 +18,8 @@ pipeline = MetricPipeline()
 @app.get("/run")
 def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(None, description="Tickers to evaluate")):
     if api_key != API_KEY:
-        raise HTTPException(401, "Unauthorized")
-
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid API Key")
+    
     # Ensure we always work with a list of strings and have a sensible fallback
     tickers_list = str(tickers).strip().split(',') if tickers else []
     results = pipeline.run(tickers_list)
