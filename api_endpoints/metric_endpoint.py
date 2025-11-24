@@ -1,6 +1,5 @@
-from http.client import HTTPException
 from typing import List, Optional
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.params import Header
 from endpoint_pipeline.metrics_pipeline import MetricPipeline
@@ -14,6 +13,8 @@ API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
 pipeline = MetricPipeline()
+
+print(API_KEY)
 
 @app.get("/run")
 def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(None, description="Tickers to evaluate")):
