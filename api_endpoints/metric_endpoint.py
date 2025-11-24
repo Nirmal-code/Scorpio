@@ -12,6 +12,5 @@ pipeline = MetricPipeline()
 def run_pipeline(tickers: Optional[str] = Query(None, description="Tickers to evaluate")):
     # Ensure we always work with a list of strings and have a sensible fallback
     tickers_list = str(tickers).strip().split(',') if tickers else []
-    print(tickers_list)
     results = pipeline.run(tickers_list)
     return jsonable_encoder({"status": "success", "data": results})
