@@ -21,13 +21,15 @@ jobs:
           echo "$RESULT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Send to Discord
+      - name: Send Discord chunks
         run: |
           MESSAGE="${{ steps.call_api.outputs.result }}"
-          ESCAPED="$(printf '%s' "$MESSAGE" | sed 's/"/\\"/g')"
+          CHUNKS=$(echo "$MESSAGE" | fold -w 1900)
 
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            -d "{\"content\": \"📊 Daily Metrics Report:\n\`\`\`$ESCAPED\`\`\`\"}" \
-            ${{ secrets.DISCORD_WEBHOOK }}
+          for CHUNK in $CHUNKS; do
+            curl -X POST \
+              -H "Content-Type: application/json" \
+              -d "{\"content\": \"\`\`\`$CHUNK\`\`\`\"}" \
+              ${{ secrets.DISCORD_WEBHOOK }}
+          done
 
