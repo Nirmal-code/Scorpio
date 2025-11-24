@@ -1,0 +1,33 @@
+name: Daily Metrics Run
+
+on:
+  schedule:
+    - cron: "30 13 * * 1-5"  # runs 22:00 UTC (5pm ET)
+  workflow_dispatch:        # allows manual trigger
+
+jobs:
+  run-metrics:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call Raspberry Pi API
+        id: call_api
+        run: |
+          RESULT=$(curl -s -X GET \
+            -H "api-key: ${{ secrets.API_KEY }}" \
+            "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
+
+          echo "result<<EOF" >> $GITHUB_OUTPUT
+          echo "$RESULT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Send to Discord
+        run: |
+          MESSAGE="${{ steps.call_api.outputs.result }}"
+          ESCAPED="$(printf '%s' "$MESSAGE" | sed 's/"/\\"/g')"
+
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "{\"content\": \"📊 Daily Metrics Report:\n\`\`\`$ESCAPED\`\`\`\"}" \
+            ${{ secrets.DISCORD_WEBHOOK }}
+
