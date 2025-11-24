@@ -21,28 +21,16 @@ jobs:
           echo "$RESULT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Send pretty JSON to Discord in multiple messages
+      - name: Send pretty JSON to Discord (FAST + RELIABLE)
         run: |
-          # Convert JSON to pretty format using jq
-          PRETTY_JSON=$(echo '${{ steps.call_api.outputs.result }}' | jq '.')
+          # Pretty-format JSON using jq and write to file
+          echo '${{ steps.call_api.outputs.result }}' | jq '.' > metrics.json
 
-          # Function to send messages safely
-          send_chunk() {
-            CHUNK="$1"
-            # Escape backticks to keep code blocks clean
-            CHUNK_ESCAPED=$(printf '%s' "$CHUNK" | sed 's/\`/\\\`/g')
-            curl -X POST \
-              -H "Content-Type: application/json" \
-              -d "{\"content\": \"\`\`\`json\n$CHUNK_ESCAPED\n\`\`\`\"}" \
-              ${{ secrets.DISCORD_WEBHOOK }}
-          }
+          # Upload as a file in a single Discord request
+          curl -s -X POST \
+            -H "Content-Type: multipart/form-data" \
+            -F "file=@metrics.json" \
+            -F "payload_json={\"content\": \"📊 Daily Metrics Report (attached)\"}" \
+            ${{ secrets.DISCORD_WEBHOOK }}
 
-          # Split the pretty JSON into 1900-character chunks (safe margin)
-          echo "$PRETTY_JSON" | fold -w 1900 > chunks.txt
-
-          # Send each chunk as a separate Discord message
-          while IFS= read -r chunk; do
-            send_chunk "$chunk"
-            sleep 1  # avoid Discord rate limits
-          done < chunks.txt
 
