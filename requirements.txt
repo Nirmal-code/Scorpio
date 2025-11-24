@@ -1,0 +1,6 @@
+requests
+dotenv
+yfinance
+fastapi
+pipeline
+uvicorn
