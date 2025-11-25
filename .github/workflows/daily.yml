@@ -20,9 +20,19 @@ jobs:
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
+          RESPONSE_NEWS=$(curl -s -X GET \
+            -H "api-key: ${{ secrets.API_KEY }}" \
+            "${{ secrets.PUBLIC_RUN_NEWS_URL }}")
+
           {
             echo "response<<EOF"
             echo "$RESPONSE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "response_news<<EOF"
+            echo "$RESPONSE_NEWS"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -31,13 +41,58 @@ jobs:
           echo "---- RAW DATA ----"
           printf "%s\n" "${{ steps.fetch.outputs.response }}"
 
-      - name: Send pretty Discord embeds
+      - name: Send pretty Discord Metrics
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           qs() { printf "%s" "$1"; }
 
           DATA=$(echo '${{ steps.fetch.outputs.response }}')
+          DATA_NEWS=$(echo '${{ steps.fetch.outputs.response_news }}')
+
+          echo "$DATA_NEWS" | jq -c '. | to_entries[]' | while read -r entry; do
+            TICKER = $(qs "$(echo "$entry" | jq -r '.key')")
+            SUMMARY=$(echo "$entry" | jq -r '.value.summary')
+            SENTIMENT=$(echo "$entry" | jq -r '.value.sentiment')
+            RELEVANCE=$(echo "$entry" | jq -r '.value.relevance')
+            IMPACT_SCORE =$(echo "$entry" | jq -r '.value.impact_score')
+            RECOMMENDATION = $(echo "$entry" | jq -r '.value.recommendation')
+            PAYLOAD_NEWS=$(jq -c -n \
+              --arg t "$(qs "$TICKER")" \
+              --arg s "$(qs "$SUMMARY")" \
+              --arg se "$(qs "$SENTIMENT")" \
+              --arg r "$(qs "$RELEVANCE")" \
+              --arg i "$(qs "$IMPACT_SCORE")" \
+              --arg rec "$(qs "$RECOMMENDATION")" \
+              '{
+                embeds: [
+                  {
+                    title: ($t + " News Evaluation"),
+                    color: 3447003,
+                    fields: [
+                      { name: "Summary", value: $s, inline: false },
+                      { name: "Sentiment", value: $se, inline: true },
+                      { name: "Relevance", value: $r, inline: true },
+                      { name: "Impact Score", value: $i, inline: true },
+                      { name: "Recommendation", value: $rec, inline: true }
+                    ]
+                  }
+                ]
+              }'
+            )
+          
+            PAYLOAD=$(echo "$PAYLOAD" | jq -c '.')
+
+            curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$WEBHOOK"
+
+            sleep 1
+          done
+
+
+
           echo "$DATA" | jq -c '. | to_entries[]' | while read -r entry; do
 
             TICKER=$(qs "$(echo "$entry" | jq -r '.key')")
