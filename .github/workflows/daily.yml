@@ -20,9 +20,11 @@ jobs:
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
-          echo "response<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$RESPONSE" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "response<<EOF"
+            echo "$RESPONSE"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Debug raw API output
         run: |
