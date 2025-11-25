@@ -26,9 +26,11 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Fetch news evaluations from Raspberry PUBLIC_RUN_METRIC_URL
+      - name: Fetch news evaluations from Raspberry
         id: fetch_news
         run: |
+
+          set -x
 
           RESPONSE_NEWS=$(curl -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
