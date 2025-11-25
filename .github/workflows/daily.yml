@@ -71,7 +71,7 @@ jobs:
             HIGH52=$(qs "$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')")
             LOW52=$(qs "$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')")
 
-            PAYLOAD=$(jq -n \
+            PAYLOAD=$(jq -c -n \
               --arg t "$(qs "$TICKER")" \
               --arg buy "$(qs "$BUY_PCT%")" \
               --arg hold "$(qs "$HOLD_PCT%")" \
@@ -125,6 +125,8 @@ jobs:
                 ]
               }'
             )
+
+            PAYLOAD=$(echo "$PAYLOAD" | jq -c '.')
 
             curl -s -X POST \
               -H "Content-Type: application/json" \
