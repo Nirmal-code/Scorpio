@@ -20,7 +20,9 @@ jobs:
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
-          echo "data=$RESPONSE" >> "$GITHUB_OUTPUT"
+          echo "response<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESPONSE" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Debug raw API output
         run: |
@@ -31,7 +33,7 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          DATA="${{ steps.fetch.outputs.data }}"
+          DATA="${{ steps.fetch.outputs.response }}"
 
           echo "$DATA" | jq -c '.data | to_entries[]' | while read -r entry; do
 
