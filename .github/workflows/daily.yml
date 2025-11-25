@@ -37,7 +37,7 @@ jobs:
         run: |
           qs() { printf "%s" "$1"; }
 
-          DATA=$(echo ${{ steps.fetch.outputs.response }})
+          DATA=$(echo '${{ steps.fetch.outputs.response }})
           echo "$DATA" | jq -c '.data | to_entries[]' | while read -r entry; do
 
             TICKER=$(qs "$(echo "$entry" | jq -r '.key')")
