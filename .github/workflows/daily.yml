@@ -82,7 +82,6 @@ jobs:
             **52-Week Levels**
             • 52w High: $FIFTY_TWO_HIGH
             • 52w Low: $FIFTY_TWO_LOW
-            EOF
             )
 
             # Escape quotes
@@ -100,5 +99,7 @@ jobs:
 
               sleep 0.7
             done
+
+          
 
 
