@@ -22,6 +22,11 @@ jobs:
 
           echo "data=$RESPONSE" >> "$GITHUB_OUTPUT"
 
+      - name: Debug raw API output
+        run: |
+          echo "---- RAW DATA ----"
+          echo "${{ steps.fetch.outputs.data }}"
+
       - name: Send pretty Discord embeds
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
