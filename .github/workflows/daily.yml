@@ -2,7 +2,7 @@ name: Daily Metrics Run
 
 on:
   schedule:
-    - cron: "30 13 * * 1-5"
+    - cron: "30 13 * * *"
   workflow_dispatch:
 
 jobs:
@@ -58,6 +58,7 @@ jobs:
             CLOSE=$(qs "$(echo "$LATEST" | jq -r '.Close // "N/A"')")
             VOLUME=$(qs "$(echo "$LATEST" | jq -r '.Volume // "N/A"')")
             UNVOL=$(qs "$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')")
+            AVERAGE_VOL_20=$(qs "$(echo "$LATEST" | jq -r '.avg_volume_20 // "N/A"')")
 
             PCT=$(qs "$(echo "$LATEST" | jq -r '.pct_change // "N/A"')")
             MA50=$(qs "$(echo "$LATEST" | jq -r '.ma50 // "N/A"')")
@@ -83,6 +84,7 @@ jobs:
               --arg pct "$(qs "$PCT")" \
               --arg vol "$(qs "$VOLUME")" \
               --arg unvol "$(qs "$UNVOL")" \
+              --arg avgvol "$(qs "$AVERAGE_VOL_20")" \
               --arg ma50 "$(qs "$MA50")" \
               --arg ma200 "$(qs "$MA200")" \
               --arg rsi "$(qs "$RSI")" \
@@ -109,6 +111,7 @@ jobs:
                       { name: "Pct Change", value: $pct, inline: true },
                       { name: "Volume", value: $vol, inline: true },
                       { name: "Unusual Vol", value: $unvol, inline: true },
+                      { name: "Avg Vol (20d)", value: $avgvol, inline: true },
 
                       { name: "MA50", value: $ma50, inline: true },
                       { name: "MA200", value: $ma200, inline: true },
