@@ -25,4 +25,6 @@ def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(Non
     # Ensure we always work with a list of strings and have a sensible fallback
     tickers_list = str(tickers).strip().split(',') if tickers else []
     results = pipeline.run(tickers_list)
+
+    print(results)
     return JSONResponse(content=results)
