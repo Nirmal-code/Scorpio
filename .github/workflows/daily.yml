@@ -21,16 +21,84 @@ jobs:
           echo "$RESULT" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Send pretty JSON to Discord (FAST + RELIABLE)
+      - name: Send full metrics per ticker (formatted embeds)
         run: |
-          # Pretty-format JSON using jq and write to file
-          echo '${{ steps.call_api.outputs.result }}' | jq '.' > metrics.json
+          DATA='${{ steps.call_api.outputs.result }}'
 
-          # Upload as a file in a single Discord request
-          curl -s -X POST \
-            -H "Content-Type: multipart/form-data" \
-            -F "file=@metrics.json" \
-            -F "payload_json={\"content\": \"📊 Daily Metrics Report (attached)\"}" \
-            ${{ secrets.DISCORD_WEBHOOK }}
+          # Extract each ticker and send an embed
+          echo "$DATA" | jq -c '.data | to_entries[]' | while read -r entry; do
+            TICKER=$(echo "$entry" | jq -r '.key')
+            EVAL=$(echo "$entry" | jq -r '.value.evaluation')
+            LATEST=$(echo "$entry" | jq -r '.value.latest')
+
+            BUY=$(echo "$EVAL" | jq -r '.BUY')
+            HOLD=$(echo "$EVAL" | jq -r '.HOLD')
+            SELL=$(echo "$EVAL" | jq -r '.SELL')
+
+            CLOSE=$(echo "$LATEST" | jq -r '.Close')
+            HIGH=$(echo "$LATEST" | jq -r '.High')
+            LOW=$(echo "$LATEST" | jq -r '.Low')
+            OPEN=$(echo "$LATEST" | jq -r '.Open')
+            VOLUME=$(echo "$LATEST" | jq -r '.Volume')
+
+            RSI=$(echo "$LATEST" | jq -r '.rsi')
+            MACD=$(echo "$LATEST" | jq -r '.macd')
+            MACD_SIGNAL=$(echo "$LATEST" | jq -r '.macd_signal')
+            ATR=$(echo "$LATEST" | jq -r '.atr')
+            REL_STRENGTH=$(echo "$LATEST" | jq -r '.rel_strength')
+
+            MA50=$(echo "$LATEST" | jq -r '.ma50')
+            MA200=$(echo "$LATEST" | jq -r '.ma200')
+            PCT_CHG=$(echo "$LATEST" | jq -r '.pct_change')
+
+            FIFTY_TWO_HIGH=$(echo "$LATEST" | jq -r '.["52w_high"]')
+            FIFTY_TWO_LOW=$(echo "$LATEST" | jq -r '.["52w_low"]')
+            UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume')
+
+            DESCRIPTION=$(cat <<EOF
+      **Evaluation**
+      • BUY: $(printf "%.0f" $(echo "$BUY*100" | bc))%
+      • HOLD: $(printf "%.0f" $(echo "$HOLD*100" | bc))%
+      • SELL: $(printf "%.0f" $(echo "$SELL*100" | bc))%
+
+      **Price & Volume**
+      • Open: $OPEN
+      • High: $HIGH
+      • Low: $LOW
+      • Close: $CLOSE
+      • pct_change: $PCT_CHG
+      • Volume: $VOLUME
+      • Unusual Volume: $UNVOL
+
+      **Trend Indicators**
+      • MA50: $MA50
+      • MA200: $MA200
+      • RSI: $RSI
+      • MACD: $MACD
+      • MACD Signal: $MACD_SIGNAL
+      • ATR: $ATR
+      • Relative Strength: $REL_STRENGTH
+
+      **52-Week Levels**
+      • 52w High: $FIFTY_TWO_HIGH
+      • 52w Low: $FIFTY_TWO_LOW
+      EOF
+      )
+
+            # Escape quotes
+            ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
+
+            curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"embeds\": [{
+                  \"title\": \"📈 $TICKER Metrics\",
+                  \"description\": \"$ESCAPED\"
+                }]
+              }" \
+              ${{ secrets.DISCORD_WEBHOOK }}
+
+            sleep 0.7
+          done
 
 
