@@ -95,7 +95,7 @@ jobs:
               '{
                 embeds: [
                   {
-                    title: ("📈 " + $t + " Metrics"),
+                    title: ($t + " Metrics"),
                     color: 5814783,
                     fields: [
                       { name: "Buy", value: $buy, inline: true },
