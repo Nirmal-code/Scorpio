@@ -2,7 +2,7 @@ name: Daily Metrics Run
 
 on:
   schedule:
-    - cron: "30 13 * * 1-5"   # 13:30 UTC, weekdays
+    - cron: "30 13 * * 1-5"
   workflow_dispatch:
 
 jobs:
@@ -10,43 +10,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install dependencies
+      - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq bc
 
-      - name: Call Raspberry Pi API
-        id: call_api
+      - name: Fetch metrics from Raspberry Pi
+        id: fetch
         run: |
-          RESULT=$(curl -s -X GET \
+          RESPONSE=$(curl -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
-          echo "result<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$RESULT" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "data=$RESPONSE" >> "$GITHUB_OUTPUT"
 
-      - name: Send formatted metrics per ticker
+      - name: Send pretty Discord embeds
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          DATA="${{ steps.call_api.outputs.result }}"
+          DATA="${{ steps.fetch.outputs.data }}"
 
           echo "$DATA" | jq -c '.data | to_entries[]' | while read -r entry; do
 
             TICKER=$(echo "$entry" | jq -r '.key')
+            EV=$(echo "$entry" | jq -r '.value.evaluation')
             LATEST=$(echo "$entry" | jq -r '.value.latest')
-            EVAL=$(echo "$entry" | jq -r '.value.evaluation')
 
-            # Extract evaluation safely
-            BUY=$(echo "$EVAL" | jq -r '.BUY // 0')
-            HOLD=$(echo "$EVAL" | jq -r '.HOLD // 0')
-            SELL=$(echo "$EVAL" | jq -r '.SELL // 0')
+            BUY=$(echo "$EV" | jq -r '.BUY // 0')
+            HOLD=$(echo "$EV" | jq -r '.HOLD // 0')
+            SELL=$(echo "$EV" | jq -r '.SELL // 0')
 
-            # Price data
+            BUY_PCT=$(printf "%.0f" "$(echo "$BUY * 100" | bc)")
+            HOLD_PCT=$(printf "%.0f" "$(echo "$HOLD * 100" | bc)")
+            SELL_PCT=$(printf "%.0f" "$(echo "$SELL * 100" | bc)")
+
             OPEN=$(echo "$LATEST" | jq -r '.Open // "N/A"')
             HIGH=$(echo "$LATEST" | jq -r '.High // "N/A"')
             LOW=$(echo "$LATEST" | jq -r '.Low // "N/A"')
             CLOSE=$(echo "$LATEST" | jq -r '.Close // "N/A"')
             VOLUME=$(echo "$LATEST" | jq -r '.Volume // "N/A"')
+            UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')
 
             PCT=$(echo "$LATEST" | jq -r '.pct_change // "N/A"')
             MA50=$(echo "$LATEST" | jq -r '.ma50 // "N/A"')
@@ -59,56 +60,67 @@ jobs:
 
             HIGH52=$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')
             LOW52=$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')
-            UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')
 
-            # Convert BUY/HOLD/SELL to %-rounded if numeric
-            BUY_PCT=$(printf "%.0f" "$(echo "$BUY * 100" | bc 2>/dev/null || echo 0)")
-            HOLD_PCT=$(printf "%.0f" "$(echo "$HOLD * 100" | bc 2>/dev/null || echo 0)")
-            SELL_PCT=$(printf "%.0f" "$(echo "$SELL * 100" | bc 2>/dev/null || echo 0)")
+            # Build embed JSON using jq (avoids YAML escaping issues)
+            PAYLOAD=$(jq -n \
+              --arg t "$TICKER" \
+              --arg buy "$BUY_PCT%" \
+              --arg hold "$HOLD_PCT%" \
+              --arg sell "$SELL_PCT%" \
+              --arg open "$OPEN" \
+              --arg high "$HIGH" \
+              --arg low "$LOW" \
+              --arg close "$CLOSE" \
+              --arg pct "$PCT" \
+              --arg vol "$VOLUME" \
+              --arg unvol "$UNVOL" \
+              --arg ma50 "$MA50" \
+              --arg ma200 "$MA200" \
+              --arg rsi "$RSI" \
+              --arg macd "$MACD" \
+              --arg macdsig "$MACD_SIGNAL" \
+              --arg atr "$ATR" \
+              --arg rel "$REL" \
+              --arg h52 "$HIGH52" \
+              --arg l52 "$LOW52" \
+              '{
+                embeds: [
+                  {
+                    title: ("📈 " + $t + " Metrics"),
+                    color: 5814783,
+                    fields: [
+                      { name: "Buy", value: $buy, inline: true },
+                      { name: "Hold", value: $hold, inline: true },
+                      { name: "Sell", value: $sell, inline: true },
 
-            DESCRIPTION=$(cat <<EOF
-**Evaluation**
-• BUY: ${BUY_PCT}%
-• HOLD: ${HOLD_PCT}%
-• SELL: ${SELL_PCT}%
+                      { name: "Open", value: $open, inline: true },
+                      { name: "High", value: $high, inline: true },
+                      { name: "Low", value: $low, inline: true },
+                      { name: "Close", value: $close, inline: true },
+                      { name: "Pct Change", value: $pct, inline: true },
+                      { name: "Volume", value: $vol, inline: true },
+                      { name: "Unusual Vol", value: $unvol, inline: true },
 
-**Price & Volume**
-• Open: $OPEN
-• High: $HIGH
-• Low: $LOW
-• Close: $CLOSE
-• pct_change: $PCT
-• Volume: $VOLUME
-• Unusual Volume: $UNVOL
+                      { name: "MA50", value: $ma50, inline: true },
+                      { name: "MA200", value: $ma200, inline: true },
+                      { name: "RSI", value: $rsi, inline: true },
+                      { name: "MACD", value: $macd, inline: true },
+                      { name: "MACD Signal", value: $macdsig, inline: true },
+                      { name: "ATR", value: $atr, inline: true },
+                      { name: "Relative Strength", value: $rel, inline: true },
 
-**Trend Indicators**
-• MA50: $MA50
-• MA200: $MA200
-• RSI: $RSI
-• MACD: $MACD
-• MACD Signal: $MACD_SIGNAL
-• ATR: $ATR
-• Relative Strength: $REL
-
-**52-Week Levels**
-• 52w High: $HIGH52
-• 52w Low: $LOW52
-EOF
+                      { name: "52w High", value: $h52, inline: true },
+                      { name: "52w Low", value: $l52, inline: true }
+                    ]
+                  }
+                ]
+              }'
             )
 
-            # Escape JSON-breaking quotes
-            ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
-
-            # Send embed to Discord
             curl -s -X POST \
               -H "Content-Type: application/json" \
-              -d "{
-                \"embeds\": [{
-                  \"title\": \"📈 ${TICKER} Metrics\",
-                  \"description\": \"$ESCAPED\"
-                }]
-              }" \
+              -d "$PAYLOAD" \
               "$WEBHOOK"
 
-            sleep 0.7
+            sleep 1
           done
