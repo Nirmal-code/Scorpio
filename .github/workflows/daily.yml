@@ -20,10 +20,12 @@ jobs:
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
+          echo "RESPONSE_NEWS"
+
           RESPONSE_NEWS=$(curl -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_NEWS_URL }}")
-
+            
           {
             echo "response<<EOF"
             echo "$RESPONSE"
