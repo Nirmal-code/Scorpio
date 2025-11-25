@@ -27,7 +27,7 @@ jobs:
       - name: Debug raw API output
         run: |
           echo "---- RAW DATA ----"
-          echo "${{ steps.fetch.outputs.data }}"
+          printf "%s\n" "${{ steps.fetch.outputs.response }}"
 
       - name: Send pretty Discord embeds
         env:
