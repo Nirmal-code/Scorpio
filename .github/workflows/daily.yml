@@ -2,14 +2,17 @@ name: Daily Metrics Run
 
 on:
   schedule:
-    - cron: "30 13 * * 1-5"  # runs 22:00 UTC (5pm ET)
-  workflow_dispatch:        # allows manual trigger
+    - cron: "30 13 * * 1-5"   # 13:30 UTC, weekdays
+  workflow_dispatch:
 
 jobs:
   run-metrics:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y jq bc
+
       - name: Call Raspberry Pi API
         id: call_api
         run: |
@@ -17,88 +20,95 @@ jobs:
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
-          echo "result<<EOF" >> $GITHUB_OUTPUT
-          echo "$RESULT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "result<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESULT" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Send full metrics per ticker (formatted embeds)
+      - name: Send formatted metrics per ticker
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          DATA='${{ steps.call_api.outputs.result }}'
+          DATA="${{ steps.call_api.outputs.result }}"
 
-          # Extract each ticker and send an embed
           echo "$DATA" | jq -c '.data | to_entries[]' | while read -r entry; do
+
             TICKER=$(echo "$entry" | jq -r '.key')
-            EVAL=$(echo "$entry" | jq -r '.value.evaluation')
             LATEST=$(echo "$entry" | jq -r '.value.latest')
+            EVAL=$(echo "$entry" | jq -r '.value.evaluation')
 
-            BUY=$(echo "$EVAL" | jq -r '.BUY')
-            HOLD=$(echo "$EVAL" | jq -r '.HOLD')
-            SELL=$(echo "$EVAL" | jq -r '.SELL')
+            # Extract evaluation safely
+            BUY=$(echo "$EVAL" | jq -r '.BUY // 0')
+            HOLD=$(echo "$EVAL" | jq -r '.HOLD // 0')
+            SELL=$(echo "$EVAL" | jq -r '.SELL // 0')
 
-            CLOSE=$(echo "$LATEST" | jq -r '.Close')
-            HIGH=$(echo "$LATEST" | jq -r '.High')
-            LOW=$(echo "$LATEST" | jq -r '.Low')
-            OPEN=$(echo "$LATEST" | jq -r '.Open')
-            VOLUME=$(echo "$LATEST" | jq -r '.Volume')
+            # Price data
+            OPEN=$(echo "$LATEST" | jq -r '.Open // "N/A"')
+            HIGH=$(echo "$LATEST" | jq -r '.High // "N/A"')
+            LOW=$(echo "$LATEST" | jq -r '.Low // "N/A"')
+            CLOSE=$(echo "$LATEST" | jq -r '.Close // "N/A"')
+            VOLUME=$(echo "$LATEST" | jq -r '.Volume // "N/A"')
 
-            RSI=$(echo "$LATEST" | jq -r '.rsi')
-            MACD=$(echo "$LATEST" | jq -r '.macd')
-            MACD_SIGNAL=$(echo "$LATEST" | jq -r '.macd_signal')
-            ATR=$(echo "$LATEST" | jq -r '.atr')
-            REL_STRENGTH=$(echo "$LATEST" | jq -r '.rel_strength')
+            PCT=$(echo "$LATEST" | jq -r '.pct_change // "N/A"')
+            MA50=$(echo "$LATEST" | jq -r '.ma50 // "N/A"')
+            MA200=$(echo "$LATEST" | jq -r '.ma200 // "N/A"')
+            RSI=$(echo "$LATEST" | jq -r '.rsi // "N/A"')
+            MACD=$(echo "$LATEST" | jq -r '.macd // "N/A"')
+            MACD_SIGNAL=$(echo "$LATEST" | jq -r '.macd_signal // "N/A"')
+            ATR=$(echo "$LATEST" | jq -r '.atr // "N/A"')
+            REL=$(echo "$LATEST" | jq -r '.rel_strength // "N/A"')
 
-            MA50=$(echo "$LATEST" | jq -r '.ma50')
-            MA200=$(echo "$LATEST" | jq -r '.ma200')
-            PCT_CHG=$(echo "$LATEST" | jq -r '.pct_change')
+            HIGH52=$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')
+            LOW52=$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')
+            UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')
 
-            FIFTY_TWO_HIGH=$(echo "$LATEST" | jq -r '.["52w_high"]')
-            FIFTY_TWO_LOW=$(echo "$LATEST" | jq -r '.["52w_low"]')
-            UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume')
+            # Convert BUY/HOLD/SELL to %-rounded if numeric
+            BUY_PCT=$(printf "%.0f" "$(echo "$BUY * 100" | bc 2>/dev/null || echo 0)")
+            HOLD_PCT=$(printf "%.0f" "$(echo "$HOLD * 100" | bc 2>/dev/null || echo 0)")
+            SELL_PCT=$(printf "%.0f" "$(echo "$SELL * 100" | bc 2>/dev/null || echo 0)")
 
             DESCRIPTION=$(cat <<EOF
-              **Evaluation**
-              • BUY: $(printf "%.0f" $(echo "$BUY*100" | bc))%
-              • HOLD: $(printf "%.0f" $(echo "$HOLD*100" | bc))%
-              • SELL: $(printf "%.0f" $(echo "$SELL*100" | bc))%
+**Evaluation**
+• BUY: ${BUY_PCT}%
+• HOLD: ${HOLD_PCT}%
+• SELL: ${SELL_PCT}%
 
-              **Price & Volume**
-              • Open: $OPEN
-              • High: $HIGH
-              • Low: $LOW
-              • Close: $CLOSE
-              • pct_change: $PCT_CHG
-              • Volume: $VOLUME
-              • Unusual Volume: $UNVOL
+**Price & Volume**
+• Open: $OPEN
+• High: $HIGH
+• Low: $LOW
+• Close: $CLOSE
+• pct_change: $PCT
+• Volume: $VOLUME
+• Unusual Volume: $UNVOL
 
-              **Trend Indicators**
-              • MA50: $MA50
-              • MA200: $MA200
-              • RSI: $RSI
-              • MACD: $MACD
-              • MACD Signal: $MACD_SIGNAL
-              • ATR: $ATR
-              • Relative Strength: $REL_STRENGTH
+**Trend Indicators**
+• MA50: $MA50
+• MA200: $MA200
+• RSI: $RSI
+• MACD: $MACD
+• MACD Signal: $MACD_SIGNAL
+• ATR: $ATR
+• Relative Strength: $REL
 
-              **52-Week Levels**
-              • 52w High: $FIFTY_TWO_HIGH
-              • 52w Low: $FIFTY_TWO_LOW
-            EOF
+**52-Week Levels**
+• 52w High: $HIGH52
+• 52w Low: $LOW52
+EOF
             )
 
-            # Escape quotes
+            # Escape JSON-breaking quotes
             ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
 
+            # Send embed to Discord
             curl -s -X POST \
               -H "Content-Type: application/json" \
               -d "{
                 \"embeds\": [{
-                  \"title\": \"📈 $TICKER Metrics\",
+                  \"title\": \"📈 ${TICKER} Metrics\",
                   \"description\": \"$ESCAPED\"
                 }]
               }" \
-              ${{ secrets.DISCORD_WEBHOOK }}
+              "$WEBHOOK"
 
-              sleep 0.7
-            done
-
-
+            sleep 0.7
+          done
