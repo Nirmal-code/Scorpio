@@ -85,20 +85,20 @@ jobs:
             EOF
             )
 
-                  # Escape quotes
-                  ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
+            # Escape quotes
+            ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
 
-                  curl -s -X POST \
-                    -H "Content-Type: application/json" \
-                    -d "{
-                      \"embeds\": [{
-                        \"title\": \"📈 $TICKER Metrics\",
-                        \"description\": \"$ESCAPED\"
-                      }]
-                    }" \
-                    ${{ secrets.DISCORD_WEBHOOK }}
+            curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -d "{
+                \"embeds\": [{
+                  \"title\": \"📈 $TICKER Metrics\",
+                  \"description\": \"$ESCAPED\"
+                }]
+              }" \
+              ${{ secrets.DISCORD_WEBHOOK }}
 
-                  sleep 0.7
-                done
+              sleep 0.7
+            done
 
 
