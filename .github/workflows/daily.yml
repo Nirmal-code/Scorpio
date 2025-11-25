@@ -33,63 +33,64 @@ jobs:
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
+          qs() { printf "%s" "$1"; }
+
           DATA="${{ steps.fetch.outputs.response }}"
 
           echo "$DATA" | jq -c '.data | to_entries[]' | while read -r entry; do
 
-            TICKER=$(echo "$entry" | jq -r '.key')
+            TICKER=$(qs "$(echo "$entry" | jq -r '.key')")
             EV=$(echo "$entry" | jq -r '.value.evaluation')
             LATEST=$(echo "$entry" | jq -r '.value.latest')
 
-            BUY=$(echo "$EV" | jq -r '.BUY // 0')
-            HOLD=$(echo "$EV" | jq -r '.HOLD // 0')
-            SELL=$(echo "$EV" | jq -r '.SELL // 0')
+            BUY=$(qs "$(echo "$EV" | jq -r '.BUY // 0')")
+            HOLD=$(qs "$(echo "$EV" | jq -r '.HOLD // 0')")
+            SELL=$(qs "$(echo "$EV" | jq -r '.SELL // 0')")
 
-            BUY_PCT=$(printf "%.0f" "$(echo "$BUY * 100" | bc)")
-            HOLD_PCT=$(printf "%.0f" "$(echo "$HOLD * 100" | bc)")
-            SELL_PCT=$(printf "%.0f" "$(echo "$SELL * 100" | bc)")
+            BUY_PCT=$(qs "$(printf "%.0f" "$(echo "$BUY * 100" | bc)")")
+            HOLD_PCT=$(qs "$(printf "%.0f" "$(echo "$HOLD * 100" | bc)")")
+            SELL_PCT=$(qs "$(printf "%.0f" "$(echo "$SELL * 100" | bc)")")
 
-            OPEN=$(echo "$LATEST" | jq -r '.Open // "N/A"')
-            HIGH=$(echo "$LATEST" | jq -r '.High // "N/A"')
-            LOW=$(echo "$LATEST" | jq -r '.Low // "N/A"')
-            CLOSE=$(echo "$LATEST" | jq -r '.Close // "N/A"')
-            VOLUME=$(echo "$LATEST" | jq -r '.Volume // "N/A"')
-            UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')
+            OPEN=$(qs "$(echo "$LATEST" | jq -r '.Open // "N/A"')")
+            HIGH=$(qs "$(echo "$LATEST" | jq -r '.High // "N/A"')")
+            LOW=$(qs "$(echo "$LATEST" | jq -r '.Low // "N/A"')")
+            CLOSE=$(qs "$(echo "$LATEST" | jq -r '.Close // "N/A"')")
+            VOLUME=$(qs "$(echo "$LATEST" | jq -r '.Volume // "N/A"')")
+            UNVOL=$(qs "$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')")
 
-            PCT=$(echo "$LATEST" | jq -r '.pct_change // "N/A"')
-            MA50=$(echo "$LATEST" | jq -r '.ma50 // "N/A"')
-            MA200=$(echo "$LATEST" | jq -r '.ma200 // "N/A"')
-            RSI=$(echo "$LATEST" | jq -r '.rsi // "N/A"')
-            MACD=$(echo "$LATEST" | jq -r '.macd // "N/A"')
-            MACD_SIGNAL=$(echo "$LATEST" | jq -r '.macd_signal // "N/A"')
-            ATR=$(echo "$LATEST" | jq -r '.atr // "N/A"')
-            REL=$(echo "$LATEST" | jq -r '.rel_strength // "N/A"')
+            PCT=$(qs "$(echo "$LATEST" | jq -r '.pct_change // "N/A"')")
+            MA50=$(qs "$(echo "$LATEST" | jq -r '.ma50 // "N/A"')")
+            MA200=$(qs "$(echo "$LATEST" | jq -r '.ma200 // "N/A"')")
+            RSI=$(qs "$(echo "$LATEST" | jq -r '.rsi // "N/A"')")
+            MACD=$(qs "$(echo "$LATEST" | jq -r '.macd // "N/A"')")
+            MACD_SIGNAL=$(qs "$(echo "$LATEST" | jq -r '.macd_signal // "N/A"')")
+            ATR=$(qs "$(echo "$LATEST" | jq -r '.atr // "N/A"')")
+            REL=$(qs "$(echo "$LATEST" | jq -r '.rel_strength // "N/A"')")
 
-            HIGH52=$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')
-            LOW52=$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')
+            HIGH52=$(qs "$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')")
+            LOW52=$(qs "$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')")
 
-            # Build embed JSON using jq (avoids YAML escaping issues)
             PAYLOAD=$(jq -n \
-              --arg t "$TICKER" \
-              --arg buy "$BUY_PCT%" \
-              --arg hold "$HOLD_PCT%" \
-              --arg sell "$SELL_PCT%" \
-              --arg open "$OPEN" \
-              --arg high "$HIGH" \
-              --arg low "$LOW" \
-              --arg close "$CLOSE" \
-              --arg pct "$PCT" \
-              --arg vol "$VOLUME" \
-              --arg unvol "$UNVOL" \
-              --arg ma50 "$MA50" \
-              --arg ma200 "$MA200" \
-              --arg rsi "$RSI" \
-              --arg macd "$MACD" \
-              --arg macdsig "$MACD_SIGNAL" \
-              --arg atr "$ATR" \
-              --arg rel "$REL" \
-              --arg h52 "$HIGH52" \
-              --arg l52 "$LOW52" \
+              --arg t "$(qs "$TICKER")" \
+              --arg buy "$(qs "$BUY_PCT%")" \
+              --arg hold "$(qs "$HOLD_PCT%")" \
+              --arg sell "$(qs "$SELL_PCT%")" \
+              --arg open "$(qs "$OPEN")" \
+              --arg high "$(qs "$HIGH")" \
+              --arg low "$(qs "$LOW")" \
+              --arg close "$(qs "$CLOSE")" \
+              --arg pct "$(qs "$PCT")" \
+              --arg vol "$(qs "$VOLUME")" \
+              --arg unvol "$(qs "$UNVOL")" \
+              --arg ma50 "$(qs "$MA50")" \
+              --arg ma200 "$(qs "$MA200")" \
+              --arg rsi "$(qs "$RSI")" \
+              --arg macd "$(qs "$MACD")" \
+              --arg macdsig "$(qs "$MACD_SIGNAL")" \
+              --arg atr "$(qs "$ATR")" \
+              --arg rel "$(qs "$REL")" \
+              --arg h52 "$(qs "$HIGH52")" \
+              --arg l52 "$(qs "$LOW52")" \
               '{
                 embeds: [
                   {
