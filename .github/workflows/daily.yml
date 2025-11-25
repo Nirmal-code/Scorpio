@@ -56,49 +56,49 @@ jobs:
             UNVOL=$(echo "$LATEST" | jq -r '.unusual_volume')
 
             DESCRIPTION=$(cat <<EOF
-      **Evaluation**
-      • BUY: $(printf "%.0f" $(echo "$BUY*100" | bc))%
-      • HOLD: $(printf "%.0f" $(echo "$HOLD*100" | bc))%
-      • SELL: $(printf "%.0f" $(echo "$SELL*100" | bc))%
+            **Evaluation**
+            • BUY: $(printf "%.0f" $(echo "$BUY*100" | bc))%
+            • HOLD: $(printf "%.0f" $(echo "$HOLD*100" | bc))%
+            • SELL: $(printf "%.0f" $(echo "$SELL*100" | bc))%
 
-      **Price & Volume**
-      • Open: $OPEN
-      • High: $HIGH
-      • Low: $LOW
-      • Close: $CLOSE
-      • pct_change: $PCT_CHG
-      • Volume: $VOLUME
-      • Unusual Volume: $UNVOL
+            **Price & Volume**
+            • Open: $OPEN
+            • High: $HIGH
+            • Low: $LOW
+            • Close: $CLOSE
+            • pct_change: $PCT_CHG
+            • Volume: $VOLUME
+            • Unusual Volume: $UNVOL
 
-      **Trend Indicators**
-      • MA50: $MA50
-      • MA200: $MA200
-      • RSI: $RSI
-      • MACD: $MACD
-      • MACD Signal: $MACD_SIGNAL
-      • ATR: $ATR
-      • Relative Strength: $REL_STRENGTH
+            **Trend Indicators**
+            • MA50: $MA50
+            • MA200: $MA200
+            • RSI: $RSI
+            • MACD: $MACD
+            • MACD Signal: $MACD_SIGNAL
+            • ATR: $ATR
+            • Relative Strength: $REL_STRENGTH
 
-      **52-Week Levels**
-      • 52w High: $FIFTY_TWO_HIGH
-      • 52w Low: $FIFTY_TWO_LOW
-      EOF
-      )
+            **52-Week Levels**
+            • 52w High: $FIFTY_TWO_HIGH
+            • 52w Low: $FIFTY_TWO_LOW
+            EOF
+            )
 
-            # Escape quotes
-            ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
+                  # Escape quotes
+                  ESCAPED=$(printf '%s' "$DESCRIPTION" | sed 's/"/\\"/g')
 
-            curl -s -X POST \
-              -H "Content-Type: application/json" \
-              -d "{
-                \"embeds\": [{
-                  \"title\": \"📈 $TICKER Metrics\",
-                  \"description\": \"$ESCAPED\"
-                }]
-              }" \
-              ${{ secrets.DISCORD_WEBHOOK }}
+                  curl -s -X POST \
+                    -H "Content-Type: application/json" \
+                    -d "{
+                      \"embeds\": [{
+                        \"title\": \"📈 $TICKER Metrics\",
+                        \"description\": \"$ESCAPED\"
+                      }]
+                    }" \
+                    ${{ secrets.DISCORD_WEBHOOK }}
 
-            sleep 0.7
-          done
+                  sleep 0.7
+                done
 
 
