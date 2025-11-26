@@ -1,4 +1,4 @@
-name: Daily Metrics Run
+name: Daily Metrics + News Run
 
 on:
   schedule:
@@ -6,197 +6,160 @@ on:
   workflow_dispatch:
 
 jobs:
-  run-metrics:
+  run:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install jq
+      - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y jq bc
 
-      - name: Fetch metrics from Raspberry Pi
-        id: fetch
+      - name: Fetch METRICS
+        id: fetch_metrics
         run: |
-          echo ${{secrets.PUBLIC_RUN_METRIC_URL}} | sed 's/./& /g'
-          echo ${{secrets.PUBLIC_RUN_NEWS_URL}} | sed 's/./& /g'
+          echo "Fetching METRICS from:"
+          echo "${{ secrets.PUBLIC_RUN_METRIC_URL }}" | sed 's/./& /g'
 
           RESPONSE=$(curl -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
-          {
-            echo "response<<EOF"
-            echo "$RESPONSE"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "response_metrics<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESPONSE" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Fetch news evaluations from Raspberry
+      - name: Fetch NEWS
         id: fetch_news
         run: |
+          echo "Fetching NEWS from:"
+          echo "${{ secrets.PUBLIC_RUN_NEWS_URL }}" | sed 's/./& /g'
+
           RESPONSE_NEWS=$(curl -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_NEWS_URL }}")
 
-          {
-            echo "response_news<<EOF"
-            echo "$RESPONSE_NEWS"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          echo "response_news<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$RESPONSE_NEWS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
-      - name: Debug raw API output
+      - name: Debug outputs
         run: |
-          echo "---- RAW DATA ----"
-          printf "%s\n" "${{ steps.fetch.outputs.response }}"
+          echo "---- RAW METRICS ----"
+          printf "%s\n" "${{ steps.fetch_metrics.outputs.response_metrics }}"
 
-      - name: Send pretty Discord Metrics
+          echo "---- RAW NEWS ----"
+          printf "%s\n" "${{ steps.fetch_news.outputs.response_news }}"
+
+      - name: Send Discord Messages
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           qs() { printf "%s" "$1"; }
 
-          DATA=$(echo '${{ steps.fetch.outputs.response }}')
-          DATA_NEWS=$(echo '${{ steps.fetch.outputs.response_news }}')
+          METRICS_DATA="${{ steps.fetch_metrics.outputs.response_metrics }}"
+          NEWS_DATA="${{ steps.fetch_news.outputs.response_news }}"
 
-          echo "$DATA_NEWS" | jq -c '. | to_entries[]' | while read -r entry; do
-            TICKER=$(qs "$(echo "$entry" | jq -r '.key')")
-            SUMMARY=$(echo "$entry" | jq -r '.value.summary')
-            SENTIMENT=$(echo "$entry" | jq -r '.value.sentiment')
-            RELEVANCE=$(echo "$entry" | jq -r '.value.relevance')
-            IMPACT_SCORE=$(echo "$entry" | jq -r '.value.impact_score')
-            RECOMMENDATION=$(echo "$entry" | jq -r '.value.recommendation')
-            PAYLOAD_NEWS=$(jq -c -n \
-              --arg t "$(qs "$TICKER")" \
-              --arg s "$(qs "$SUMMARY")" \
-              --arg se "$(qs "$SENTIMENT")" \
-              --arg r "$(qs "$RELEVANCE")" \
-              --arg i "$(qs "$IMPACT_SCORE")" \
-              --arg rec "$(qs "$RECOMMENDATION")" \
-              '{
-                embeds: [
-                  {
-                    title: ($t + " News Evaluation"),
-                    color: 3447003,
-                    fields: [
-                      { name: "Summary", value: $s, inline: false },
-                      { name: "Sentiment", value: $se, inline: true },
-                      { name: "Relevance", value: $r, inline: true },
-                      { name: "Impact Score", value: $i, inline: true },
-                      { name: "Recommendation", value: $rec, inline: true }
-                    ]
-                  }
-                ]
-              }'
-            )
-          
-            PAYLOAD_NEWS=$(echo "$PAYLOAD_NEWS" | jq -c '.')
+          ###############################################
+          # ----------- SEND NEWS MESSAGES ------------
+          ###############################################
+          if [ -z "$NEWS_DATA" ] || [ "$NEWS_DATA" = "null" ] || [ "$NEWS_DATA" = "{}" ]; then
+            echo "No news data to send."
+          else
+            echo "$NEWS_DATA" | jq -c '. | to_entries[]' | while read -r entry; do
+              TICKER=$(echo "$entry" | jq -r '.key')
+              SUMMARY=$(echo "$entry" | jq -r '.value.summary')
+              SENTIMENT=$(echo "$entry" | jq -r '.value.sentiment')
+              RELEVANCE=$(echo "$entry" | jq -r '.value.relevance')
+              IMPACT=$(echo "$entry" | jq -r '.value.impact_score')
+              REC=$(echo "$entry" | jq -r '.value.recommendation')
 
-            curl -s -X POST \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD_NEWS" \
-              "$WEBHOOK"
+              PAYLOAD_NEWS=$(jq -c -n \
+                --arg t "$TICKER" \
+                --arg s "$SUMMARY" \
+                --arg se "$SENTIMENT" \
+                --arg r "$RELEVANCE" \
+                --arg i "$IMPACT" \
+                --arg rec "$REC" \
+                '{
+                  embeds: [
+                    {
+                      title: ($t + " — News Evaluation"),
+                      color: 3447003,
+                      fields: [
+                        { name: "Summary", value: $s, inline: false },
+                        { name: "Sentiment", value: $se, inline: true },
+                        { name: "Relevance", value: $r, inline: true },
+                        { name: "Impact Score", value: $i, inline: true },
+                        { name: "Recommendation", value: $rec, inline: true }
+                      ]
+                    }
+                  ]
+                }')
 
-            sleep 1
-          done
+              curl -s -X POST -H "Content-Type: application/json" \
+                -d "$PAYLOAD_NEWS" "$WEBHOOK"
+              sleep 1
+            done
+          fi
 
-
-
-          echo "$DATA" | jq -c '. | to_entries[]' | while read -r entry; do
-
-            TICKER=$(qs "$(echo "$entry" | jq -r '.key')")
+          ###############################################
+          # ----------- SEND METRICS MESSAGES ----------
+          ###############################################
+          echo "$METRICS_DATA" | jq -c '. | to_entries[]' | while read -r entry; do
+            TICKER=$(echo "$entry" | jq -r '.key')
             EV=$(echo "$entry" | jq -r '.value.evaluation')
             LATEST=$(echo "$entry" | jq -r '.value.latest')
 
-            BUY=$(qs "$(echo "$EV" | jq -r '.BUY // 0')")
-            HOLD=$(qs "$(echo "$EV" | jq -r '.HOLD // 0')")
-            SELL=$(qs "$(echo "$EV" | jq -r '.SELL // 0')")
+            BUY=$(echo "$EV" | jq -r '.BUY // 0')
+            HOLD=$(echo "$EV" | jq -r '.HOLD // 0')
+            SELL=$(echo "$EV" | jq -r '.SELL // 0')
 
-            BUY_PCT=$(qs "$(printf "%.0f" "$(echo "$BUY * 100" | bc)")")
-            HOLD_PCT=$(qs "$(printf "%.0f" "$(echo "$HOLD * 100" | bc)")")
-            SELL_PCT=$(qs "$(printf "%.0f" "$(echo "$SELL * 100" | bc)")")
-
-            OPEN=$(qs "$(echo "$LATEST" | jq -r '.Open // "N/A"')")
-            HIGH=$(qs "$(echo "$LATEST" | jq -r '.High // "N/A"')")
-            LOW=$(qs "$(echo "$LATEST" | jq -r '.Low // "N/A"')")
-            CLOSE=$(qs "$(echo "$LATEST" | jq -r '.Close // "N/A"')")
-            VOLUME=$(qs "$(echo "$LATEST" | jq -r '.Volume // "N/A"')")
-            UNVOL=$(qs "$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')")
-            AVERAGE_VOL_20=$(qs "$(echo "$LATEST" | jq -r '.avg_volume_20 // "N/A"')")
-
-            PCT=$(qs "$(echo "$LATEST" | jq -r '.pct_change // "N/A"')")
-            MA50=$(qs "$(echo "$LATEST" | jq -r '.ma50 // "N/A"')")
-            MA200=$(qs "$(echo "$LATEST" | jq -r '.ma200 // "N/A"')")
-            RSI=$(qs "$(echo "$LATEST" | jq -r '.rsi // "N/A"')")
-            MACD=$(qs "$(echo "$LATEST" | jq -r '.macd // "N/A"')")
-            MACD_SIGNAL=$(qs "$(echo "$LATEST" | jq -r '.macd_signal // "N/A"')")
-            ATR=$(qs "$(echo "$LATEST" | jq -r '.atr // "N/A"')")
-            REL=$(qs "$(echo "$LATEST" | jq -r '.rel_strength // "N/A"')")
-
-            HIGH52=$(qs "$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')")
-            LOW52=$(qs "$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')")
+            BUY_PCT=$(printf "%.0f" "$(echo "$BUY * 100" | bc)")
+            HOLD_PCT=$(printf "%.0f" "$(echo "$HOLD * 100" | bc)")
+            SELL_PCT=$(printf "%.0f" "$(echo "$SELL * 100" | bc)")
 
             PAYLOAD=$(jq -c -n \
-              --arg t "$(qs "$TICKER")" \
-              --arg buy "$(qs "$BUY_PCT%")" \
-              --arg hold "$(qs "$HOLD_PCT%")" \
-              --arg sell "$(qs "$SELL_PCT%")" \
-              --arg open "$(qs "$OPEN")" \
-              --arg high "$(qs "$HIGH")" \
-              --arg low "$(qs "$LOW")" \
-              --arg close "$(qs "$CLOSE")" \
-              --arg pct "$(qs "$PCT")" \
-              --arg vol "$(qs "$VOLUME")" \
-              --arg unvol "$(qs "$UNVOL")" \
-              --arg avgvol "$(qs "$AVERAGE_VOL_20")" \
-              --arg ma50 "$(qs "$MA50")" \
-              --arg ma200 "$(qs "$MA200")" \
-              --arg rsi "$(qs "$RSI")" \
-              --arg macd "$(qs "$MACD")" \
-              --arg macdsig "$(qs "$MACD_SIGNAL")" \
-              --arg atr "$(qs "$ATR")" \
-              --arg rel "$(qs "$REL")" \
-              --arg h52 "$(qs "$HIGH52")" \
-              --arg l52 "$(qs "$LOW52")" \
-              '{
+              --arg t "$TICKER" \
+              --arg buy "${BUY_PCT}%" \
+              --arg hold "${HOLD_PCT}%" \
+              --arg sell "${SELL_PCT}%" \
+              --argjson latest "$LATEST" \
+              '
+              {
                 embeds: [
                   {
-                    title: ($t + " Metrics"),
+                    title: ($t + " — Metrics"),
                     color: 5814783,
                     fields: [
                       { name: "Buy", value: $buy, inline: true },
                       { name: "Hold", value: $hold, inline: true },
                       { name: "Sell", value: $sell, inline: true },
 
-                      { name: "Open", value: $open, inline: true },
-                      { name: "High", value: $high, inline: true },
-                      { name: "Low", value: $low, inline: true },
-                      { name: "Close", value: $close, inline: true },
-                      { name: "Pct Change", value: $pct, inline: true },
-                      { name: "Volume", value: $vol, inline: true },
-                      { name: "Unusual Vol", value: $unvol, inline: true },
-                      { name: "Avg Vol (20d)", value: $avgvol, inline: true },
+                      { name: "Open", value: ($latest.Open // "N/A"), inline: true },
+                      { name: "High", value: ($latest.High // "N/A"), inline: true },
+                      { name: "Low", value: ($latest.Low // "N/A"), inline: true },
+                      { name: "Close", value: ($latest.Close // "N/A"), inline: true },
 
-                      { name: "MA50", value: $ma50, inline: true },
-                      { name: "MA200", value: $ma200, inline: true },
-                      { name: "RSI", value: $rsi, inline: true },
-                      { name: "MACD", value: $macd, inline: true },
-                      { name: "MACD Signal", value: $macdsig, inline: true },
-                      { name: "ATR", value: $atr, inline: true },
-                      { name: "Relative Strength", value: $rel, inline: true },
+                      { name: "Pct Change", value: ($latest.pct_change // "N/A"), inline: true },
+                      { name: "Volume", value: ($latest.Volume // "N/A"), inline: true },
+                      { name: "Unusual Vol", value: ($latest.unusual_volume // "N/A"), inline: true },
 
-                      { name: "52w High", value: $h52, inline: true },
-                      { name: "52w Low", value: $l52, inline: true }
+                      { name: "Avg Vol (20d)", value: ($latest.avg_volume_20 // "N/A"), inline: true },
+                      { name: "MA50", value: ($latest.ma50 // "N/A"), inline: true },
+                      { name: "MA200", value: ($latest.ma200 // "N/A"), inline: true },
+                      { name: "RSI", value: ($latest.rsi // "N/A"), inline: true },
+                      { name: "MACD", value: ($latest.macd // "N/A"), inline: true },
+                      { name: "MACD Signal", value: ($latest.macd_signal // "N/A"), inline: true },
+                      { name: "ATR", value: ($latest.atr // "N/A"), inline: true },
+                      { name: "Relative Strength", value: ($latest.rel_strength // "N/A"), inline: true },
+
+                      { name: "52w High", value: ($latest."52w_high" // "N/A"), inline: true },
+                      { name: "52w Low", value: ($latest."52w_low" // "N/A"), inline: true }
                     ]
                   }
                 ]
-              }'
-            )
+              }')
 
-            PAYLOAD=$(echo "$PAYLOAD" | jq -c '.')
-
-            curl -s -X POST \
-              -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              "$WEBHOOK"
-
+            curl -s -X POST -H "Content-Type: application/json" \
+              -d "$PAYLOAD" "$WEBHOOK"
             sleep 1
           done
-
