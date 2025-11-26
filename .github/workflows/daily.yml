@@ -57,6 +57,7 @@ jobs:
       - name: Send Discord Messages
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          NEWS_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_NEWS }}
         run: |
           qs() { printf "%s" "$1"; }
 
@@ -97,7 +98,7 @@ jobs:
                 }')
 
               curl -s -X POST -H "Content-Type: application/json" \
-                -d "$PAYLOAD" "$WEBHOOK"
+                -d "$PAYLOAD" "$NEWS_WEBHOOK"
 
               sleep 1
             done
