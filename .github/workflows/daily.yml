@@ -29,10 +29,7 @@ jobs:
       - name: Fetch news evaluations from Raspberry
         id: fetch_news
         run: |
-
-          set -x
-
-          RESPONSE_NEWS=$(curl -v --fail --connect-timeout 10 
+          RESPONSE_NEWS=$(curl -v --fail --connect-timeout 10 \
             --max-time 20 -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_NEWS_URL }}")
@@ -58,12 +55,12 @@ jobs:
           DATA_NEWS=$(echo '${{ steps.fetch.outputs.response_news }}')
 
           echo "$DATA_NEWS" | jq -c '. | to_entries[]' | while read -r entry; do
-            TICKER = $(qs "$(echo "$entry" | jq -r '.key')")
+            TICKER=$(qs "$(echo "$entry" | jq -r '.key')")
             SUMMARY=$(echo "$entry" | jq -r '.value.summary')
             SENTIMENT=$(echo "$entry" | jq -r '.value.sentiment')
             RELEVANCE=$(echo "$entry" | jq -r '.value.relevance')
-            IMPACT_SCORE =$(echo "$entry" | jq -r '.value.impact_score')
-            RECOMMENDATION = $(echo "$entry" | jq -r '.value.recommendation')
+            IMPACT_SCORE=$(echo "$entry" | jq -r '.value.impact_score')
+            RECOMMENDATION=$(echo "$entry" | jq -r '.value.recommendation')
             PAYLOAD_NEWS=$(jq -c -n \
               --arg t "$(qs "$TICKER")" \
               --arg s "$(qs "$SUMMARY")" \

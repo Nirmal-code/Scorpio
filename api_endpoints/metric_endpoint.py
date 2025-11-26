@@ -14,9 +14,21 @@ load_dotenv()  # load .env file
 API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
-pipeline = MetricPipeline()
+pipeline = None
 
-newsPipeline = NewsPipeline()
+newsPipeline = None
+
+def get_pipeline():
+    global pipeline
+    if pipeline is None:
+        pipeline = MetricPipeline()
+    return pipeline
+
+def get_news_pipeline():
+    global newsPipeline
+    if newsPipeline is None:
+        newsPipeline = NewsPipeline()
+    return newsPipeline
 
 @app.get("/run")
 def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(None, description="Tickers to evaluate")):
@@ -25,7 +37,8 @@ def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(Non
     
     # Ensure we always work with a list of strings and have a sensible fallback
     tickers_list = str(tickers).strip().split(',') if tickers else []
-    results = pipeline.run(tickers_list)
+    p = get_pipeline()   # lazy load here
+    results = p.run(tickers_list)
 
     return JSONResponse(content=results)
 
@@ -36,7 +49,8 @@ def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(Non
     
     # Ensure we always work with a list of strings and have a sensible fallback
     tickers_list = str(tickers).strip().split(',') if tickers else []
-    results = newsPipeline.run(tickers_list)
+    n = get_news_pipeline()   # lazy load here
+    results = n.run(tickers_list)
 
     return JSONResponse(content=results)
 
