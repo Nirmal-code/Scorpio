@@ -13,55 +13,61 @@ jobs:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y jq bc
 
-      - name: Fetch METRICS
-        id: fetch_metrics
+      # -----------------------------------------------------------
+      # FETCH METRICS (save to file)
+      # -----------------------------------------------------------
+      - name: Fetch metrics
+        id: metrics
         run: |
-          echo "Fetching METRICS from:"
-          echo "${{ secrets.PUBLIC_RUN_METRIC_URL }}" | sed 's/./& /g'
-
-          RESPONSE=$(curl -s -X GET \
+          curl -s \
             -H "api-key: ${{ secrets.API_KEY }}" \
-            "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
+            "${{ secrets.PUBLIC_RUN_METRIC_URL }}" \
+            > metrics.json
 
-          echo "response_metrics<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$RESPONSE" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "metrics_file=metrics.json" >> $GITHUB_OUTPUT
 
-      - name: Fetch NEWS
-        id: fetch_news
+      # -----------------------------------------------------------
+      # FETCH NEWS (save to file)
+      # -----------------------------------------------------------
+      - name: Fetch news
+        id: news
         run: |
-          echo "Fetching NEWS from:"
-          echo "${{ secrets.PUBLIC_RUN_NEWS_URL }}" | sed 's/./& /g'
-
-          RESPONSE_NEWS=$(curl -s -X GET \
+          curl -s \
             -H "api-key: ${{ secrets.API_KEY }}" \
-            "${{ secrets.PUBLIC_RUN_NEWS_URL }}")
+            "${{ secrets.PUBLIC_RUN_NEWS_URL }}" \
+            > news.json
 
-          echo "response_news<<EOF" >> "$GITHUB_OUTPUT"
-          echo "$RESPONSE_NEWS" >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "news_file=news.json" >> $GITHUB_OUTPUT
 
-      - name: Debug outputs
+      # -----------------------------------------------------------
+      # DEBUG
+      # -----------------------------------------------------------
+      - name: Debug raw output
         run: |
-          echo "---- RAW METRICS ----"
-          printf "%s\n" "${{ steps.fetch_metrics.outputs.response_metrics }}"
+          echo "---- METRICS.JSON ----"
+          cat "${{ steps.metrics.outputs.metrics_file }}"
+          echo ""
+          echo "---- NEWS.JSON ----"
+          cat "${{ steps.news.outputs.news_file }}"
+          echo ""
 
-          echo "---- RAW NEWS ----"
-          printf "%s\n" "${{ steps.fetch_news.outputs.response_news }}"
-
+      # -----------------------------------------------------------
+      # SEND DISCORD
+      # -----------------------------------------------------------
       - name: Send Discord Messages
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           qs() { printf "%s" "$1"; }
 
-          METRICS_DATA="${{ steps.fetch_metrics.outputs.response_metrics }}"
-          NEWS_DATA="${{ steps.fetch_news.outputs.response_news }}"
+          METRICS_FILE="${{ steps.metrics.outputs.metrics_file }}"
+          NEWS_FILE="${{ steps.news.outputs.news_file }}"
 
-          if [ -z "$NEWS_DATA" ] || [ "$NEWS_DATA" = "null" ] || [ "$NEWS_DATA" = "{}" ]; then
-            echo "No news data to send."
-          else
-            echo "$NEWS_DATA" | jq -c '. | to_entries[]' | while read -r entry; do
+          ###########################################################
+          # NEWS LOOP — jq reads directly from file
+          ###########################################################
+          if jq -e 'length>0' "$NEWS_FILE" >/dev/null 2>&1; then
+            jq -c '. | to_entries[]' "$NEWS_FILE" | while read -r entry; do
               TICKER=$(echo "$entry" | jq -r '.key')
               SUMMARY=$(echo "$entry" | jq -r '.value.summary')
               SENTIMENT=$(echo "$entry" | jq -r '.value.sentiment')
@@ -69,7 +75,7 @@ jobs:
               IMPACT=$(echo "$entry" | jq -r '.value.impact_score')
               REC=$(echo "$entry" | jq -r '.value.recommendation')
 
-              PAYLOAD_NEWS=$(jq -c -n \
+              PAYLOAD=$(jq -c -n \
                 --arg t "$TICKER" \
                 --arg s "$SUMMARY" \
                 --arg se "$SENTIMENT" \
@@ -77,31 +83,35 @@ jobs:
                 --arg i "$IMPACT" \
                 --arg rec "$REC" \
                 '{
-                  embeds: [
-                    {
-                      title: ($t + " — News Evaluation"),
-                      color: 3447003,
-                      fields: [
-                        { name: "Summary", value: $s, inline: false },
-                        { name: "Sentiment", value: $se, inline: true },
-                        { name: "Relevance", value: $r, inline: true },
-                        { name: "Impact Score", value: $i, inline: true },
-                        { name: "Recommendation", value: $rec, inline: true }
-                      ]
-                    }
-                  ]
+                  embeds: [{
+                    title: ($t + " News Evaluation"),
+                    color: 3447003,
+                    fields: [
+                      { name: "Summary", value: $s, inline: false },
+                      { name: "Sentiment", value: $se, inline: true },
+                      { name: "Relevance", value: $r, inline: true },
+                      { name: "Impact Score", value: $i, inline: true },
+                      { name: "Recommendation", value: $rec, inline: true }
+                    ]
+                  }]
                 }')
 
               curl -s -X POST -H "Content-Type: application/json" \
-                -d "$PAYLOAD_NEWS" "$WEBHOOK"
+                -d "$PAYLOAD" "$WEBHOOK"
+
               sleep 1
             done
+          else
+            echo "NEWS JSON is empty — skipping"
           fi
 
-          echo "$METRICS_DATA" | jq -c '. | to_entries[]' | while read -r entry; do
+          ###########################################################
+          # METRICS LOOP — jq reads directly from file
+          ###########################################################
+          jq -c '. | to_entries[]' "$METRICS_FILE" | while read -r entry; do
             TICKER=$(echo "$entry" | jq -r '.key')
-            EV=$(echo "$entry" | jq -r '.value.evaluation')
-            LATEST=$(echo "$entry" | jq -r '.value.latest')
+            EV=$(echo "$entry" | jq '.value.evaluation')
+            LATEST=$(echo "$entry" | jq '.value.latest')
 
             BUY=$(echo "$EV" | jq -r '.BUY // 0')
             HOLD=$(echo "$EV" | jq -r '.HOLD // 0')
@@ -117,43 +127,41 @@ jobs:
               --arg hold "${HOLD_PCT}%" \
               --arg sell "${SELL_PCT}%" \
               --argjson latest "$LATEST" \
-              '
-              {
-                embeds: [
-                  {
-                    title: ($t + " — Metrics"),
-                    color: 5814783,
-                    fields: [
-                      { name: "Buy", value: $buy, inline: true },
-                      { name: "Hold", value: $hold, inline: true },
-                      { name: "Sell", value: $sell, inline: true },
+              '{
+                embeds: [{
+                  title: ($t + " Metrics"),
+                  color: 5814783,
+                  fields: [
+                    { name: "Buy", value: $buy, inline: true },
+                    { name: "Hold", value: $hold, inline: true },
+                    { name: "Sell", value: $sell, inline: true },
 
-                      { name: "Open", value: ($latest.Open // "N/A"), inline: true },
-                      { name: "High", value: ($latest.High // "N/A"), inline: true },
-                      { name: "Low", value: ($latest.Low // "N/A"), inline: true },
-                      { name: "Close", value: ($latest.Close // "N/A"), inline: true },
+                    { name: "Open", value: ($latest.Open // "N/A"), inline: true },
+                    { name: "High", value: ($latest.High // "N/A"), inline: true },
+                    { name: "Low", value: ($latest.Low // "N/A"), inline: true },
+                    { name: "Close", value: ($latest.Close // "N/A"), inline: true },
 
-                      { name: "Pct Change", value: ($latest.pct_change // "N/A"), inline: true },
-                      { name: "Volume", value: ($latest.Volume // "N/A"), inline: true },
-                      { name: "Unusual Vol", value: ($latest.unusual_volume // "N/A"), inline: true },
+                    { name: "Pct Change", value: ($latest.pct_change // "N/A"), inline: true },
+                    { name: "Volume", value: ($latest.Volume // "N/A"), inline: true },
+                    { name: "Unusual Vol", value: ($latest.unusual_volume // "N/A"), inline: true },
 
-                      { name: "Avg Vol (20d)", value: ($latest.avg_volume_20 // "N/A"), inline: true },
-                      { name: "MA50", value: ($latest.ma50 // "N/A"), inline: true },
-                      { name: "MA200", value: ($latest.ma200 // "N/A"), inline: true },
-                      { name: "RSI", value: ($latest.rsi // "N/A"), inline: true },
-                      { name: "MACD", value: ($latest.macd // "N/A"), inline: true },
-                      { name: "MACD Signal", value: ($latest.macd_signal // "N/A"), inline: true },
-                      { name: "ATR", value: ($latest.atr // "N/A"), inline: true },
-                      { name: "Relative Strength", value: ($latest.rel_strength // "N/A"), inline: true },
+                    { name: "Avg Vol (20d)", value: ($latest.avg_volume_20 // "N/A"), inline: true },
+                    { name: "MA50", value: ($latest.ma50 // "N/A"), inline: true },
+                    { name: "MA200", value: ($latest.ma200 // "N/A"), inline: true },
+                    { name: "RSI", value: ($latest.rsi // "N/A"), inline: true },
+                    { name: "MACD", value: ($latest.macd // "N/A"), inline: true },
+                    { name: "MACD Signal", value: ($latest.macd_signal // "N/A"), inline: true },
+                    { name: "ATR", value: ($latest.atr // "N/A"), inline: true },
+                    { name: "Relative Strength", value: ($latest.rel_strength // "N/A"), inline: true },
 
-                      { name: "52w High", value: ($latest."52w_high" // "N/A"), inline: true },
-                      { name: "52w Low", value: ($latest."52w_low" // "N/A"), inline: true }
-                    ]
-                  }
-                ]
+                    { name: "52w High", value: ($latest."52w_high" // "N/A"), inline: true },
+                    { name: "52w Low", value: ($latest."52w_low" // "N/A"), inline: true }
+                  ]
+                }]
               }')
 
             curl -s -X POST -H "Content-Type: application/json" \
               -d "$PAYLOAD" "$WEBHOOK"
+
             sleep 1
           done
