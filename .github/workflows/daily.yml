@@ -16,7 +16,8 @@ jobs:
       - name: Fetch metrics from Raspberry Pi
         id: fetch
         run: |
-          RESPONSE=$(curl -s -X GET \
+          RESPONSE=$(curl -v --fail --connect-timeout 10 \
+            --max-time 20 -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_METRIC_URL }}")
 
