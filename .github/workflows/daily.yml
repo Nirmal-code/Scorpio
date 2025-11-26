@@ -58,9 +58,6 @@ jobs:
           METRICS_DATA="${{ steps.fetch_metrics.outputs.response_metrics }}"
           NEWS_DATA="${{ steps.fetch_news.outputs.response_news }}"
 
-          ###############################################
-          # ----------- SEND NEWS MESSAGES ------------
-          ###############################################
           if [ -z "$NEWS_DATA" ] || [ "$NEWS_DATA" = "null" ] || [ "$NEWS_DATA" = "{}" ]; then
             echo "No news data to send."
           else
@@ -101,9 +98,6 @@ jobs:
             done
           fi
 
-          ###############################################
-          # ----------- SEND METRICS MESSAGES ----------
-          ###############################################
           echo "$METRICS_DATA" | jq -c '. | to_entries[]' | while read -r entry; do
             TICKER=$(echo "$entry" | jq -r '.key')
             EV=$(echo "$entry" | jq -r '.value.evaluation')
