@@ -121,44 +121,63 @@ jobs:
             HOLD_PCT=$(printf "%.0f" "$(echo "$HOLD * 100" | bc)")
             SELL_PCT=$(printf "%.0f" "$(echo "$SELL * 100" | bc)")
 
-            PAYLOAD=$(jq -c -n \
-              --arg t "$TICKER" \
-              --arg buy "${BUY_PCT}%" \
-              --arg hold "${HOLD_PCT}%" \
-              --arg sell "${SELL_PCT}%" \
-              --argjson latest "$LATEST" \
-              '{
-                embeds: [{
-                  title: ($t + " Metrics"),
-                  color: 5814783,
-                  fields: [
-                    { name: "Buy", value: $buy, inline: true },
-                    { name: "Hold", value: $hold, inline: true },
-                    { name: "Sell", value: $sell, inline: true },
+          PAYLOAD=$(jq -c -n \
+            --arg t "$TICKER" \
+            --arg buy "${BUY_PCT}%" \
+            --arg hold "${HOLD_PCT}%" \
+            --arg sell "${SELL_PCT}%" \
+            --arg open "$(echo "$LATEST" | jq -r '.Open // "N/A"')" \
+            --arg high "$(echo "$LATEST" | jq -r '.High // "N/A"')" \
+            --arg low "$(echo "$LATEST" | jq -r '.Low // "N/A"')" \
+            --arg close "$(echo "$LATEST" | jq -r '.Close // "N/A"')" \
+            --arg pct "$(echo "$LATEST" | jq -r '.pct_change // "N/A"')" \
+            --arg vol "$(echo "$LATEST" | jq -r '.Volume // "N/A"')" \
+            --arg unvol "$(echo "$LATEST" | jq -r '.unusual_volume // "N/A"')" \
+            --arg avgvol "$(echo "$LATEST" | jq -r '.avg_volume_20 // "N/A"')" \
+            --arg ma50 "$(echo "$LATEST" | jq -r '.ma50 // "N/A"')" \
+            --arg ma200 "$(echo "$LATEST" | jq -r '.ma200 // "N/A"')" \
+            --arg rsi "$(echo "$LATEST" | jq -r '.rsi // "N/A"')" \
+            --arg macd "$(echo "$LATEST" | jq -r '.macd // "N/A"')" \
+            --arg macdsig "$(echo "$LATEST" | jq -r '.macd_signal // "N/A"')" \
+            --arg atr "$(echo "$LATEST" | jq -r '.atr // "N/A"')" \
+            --arg rel "$(echo "$LATEST" | jq -r '.rel_strength // "N/A"')" \
+            --arg h52 "$(echo "$LATEST" | jq -r '."52w_high" // "N/A"')" \
+            --arg l52 "$(echo "$LATEST" | jq -r '."52w_low" // "N/A"')" \
+            '
+            {
+              embeds: [{
+                title: ($t + " Metrics"),
+                color: 5814783,
+                fields: [
+                  { name: "Buy", value: $buy, inline: true },
+                  { name: "Hold", value: $hold, inline: true },
+                  { name: "Sell", value: $sell, inline: true },
 
-                    { name: "Open", value: ($latest.Open // "N/A"), inline: true },
-                    { name: "High", value: ($latest.High // "N/A"), inline: true },
-                    { name: "Low", value: ($latest.Low // "N/A"), inline: true },
-                    { name: "Close", value: ($latest.Close // "N/A"), inline: true },
+                  { name: "Open", value: $open, inline: true },
+                  { name: "High", value: $high, inline: true },
+                  { name: "Low", value: $low, inline: true },
+                  { name: "Close", value: $close, inline: true },
 
-                    { name: "Pct Change", value: ($latest.pct_change // "N/A"), inline: true },
-                    { name: "Volume", value: ($latest.Volume // "N/A"), inline: true },
-                    { name: "Unusual Vol", value: ($latest.unusual_volume // "N/A"), inline: true },
+                  { name: "Pct Change", value: $pct, inline: true },
+                  { name: "Volume", value: $vol, inline: true },
+                  { name: "Unusual Vol", value: $unvol, inline: true },
+                  { name: "Avg Vol (20d)", value: $avgvol, inline: true },
 
-                    { name: "Avg Vol (20d)", value: ($latest.avg_volume_20 // "N/A"), inline: true },
-                    { name: "MA50", value: ($latest.ma50 // "N/A"), inline: true },
-                    { name: "MA200", value: ($latest.ma200 // "N/A"), inline: true },
-                    { name: "RSI", value: ($latest.rsi // "N/A"), inline: true },
-                    { name: "MACD", value: ($latest.macd // "N/A"), inline: true },
-                    { name: "MACD Signal", value: ($latest.macd_signal // "N/A"), inline: true },
-                    { name: "ATR", value: ($latest.atr // "N/A"), inline: true },
-                    { name: "Relative Strength", value: ($latest.rel_strength // "N/A"), inline: true },
+                  { name: "MA50", value: $ma50, inline: true },
+                  { name: "MA200", value: $ma200, inline: true },
+                  { name: "RSI", value: $rsi, inline: true },
+                  { name: "MACD", value: $macd, inline: true },
+                  { name: "MACD Signal", value: $macdsig, inline: true },
+                  { name: "ATR", value: $atr, inline: true },
+                  { name: "Relative Strength", value: $rel, inline: true },
 
-                    { name: "52w High", value: ($latest."52w_high" // "N/A"), inline: true },
-                    { name: "52w Low", value: ($latest."52w_low" // "N/A"), inline: true }
-                  ]
-                }]
-              }')
+                  { name: "52w High", value: $h52, inline: true },
+                  { name: "52w Low", value: $l52, inline: true }
+                ]
+              }]
+            }
+            ')
+
 
             curl -s -X POST -H "Content-Type: application/json" \
               -d "$PAYLOAD" "$WEBHOOK"
