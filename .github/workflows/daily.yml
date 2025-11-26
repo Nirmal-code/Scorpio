@@ -32,7 +32,8 @@ jobs:
 
           set -x
 
-          RESPONSE_NEWS=$(curl -s -X GET \
+          RESPONSE_NEWS=$(curl -v --fail --connect-timeout 10 
+            --max-time 20 -s -X GET \
             -H "api-key: ${{ secrets.API_KEY }}" \
             "${{ secrets.PUBLIC_RUN_NEWS_URL }}")
 
