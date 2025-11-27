@@ -10,11 +10,11 @@ class NewsEvaluator:
         self.model = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     def evaluate_news_relevance(self, tickers):
-        relevant_news = self.fetcher.get_relevant_news_articles(tickers, limit=200)
-        for ticker, articles in relevant_news.items():
-            self.model_evaluation(ticker, articles)
+        relevant_news = self.fetcher.get_relevant_news_articles(tickers, limit=20)
+        # for ticker, articles in relevant_news.items():
+        #     self.model_evaluation(ticker, articles)
 
-        return self.evaluated_news
+        return relevant_news
     
 
     def model_evaluation(self, ticker, articles):

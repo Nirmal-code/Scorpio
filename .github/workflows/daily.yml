@@ -70,37 +70,34 @@ jobs:
           if jq -e 'length>0' "$NEWS_FILE" >/dev/null 2>&1; then
             jq -c '. | to_entries[]' "$NEWS_FILE" | while read -r entry; do
               TICKER=$(echo "$entry" | jq -r '.key')
-              SUMMARY=$(echo "$entry" | jq -r '.value.summary')
-              SENTIMENT=$(echo "$entry" | jq -r '.value.sentiment')
-              RELEVANCE=$(echo "$entry" | jq -r '.value.relevance')
-              IMPACT=$(echo "$entry" | jq -r '.value.impact_score')
-              REC=$(echo "$entry" | jq -r '.value.recommendation')
 
-              PAYLOAD=$(jq -c -n \
-                --arg t "$TICKER" \
-                --arg s "$SUMMARY" \
-                --arg se "$SENTIMENT" \
-                --arg r "$RELEVANCE" \
-                --arg i "$IMPACT" \
-                --arg rec "$REC" \
-                '{
-                  embeds: [{
-                    title: ($t + " News Evaluation"),
-                    color: 3447003,
-                    fields: [
-                      { name: "Summary", value: $s, inline: false },
-                      { name: "Sentiment", value: $se, inline: true },
-                      { name: "Relevance", value: $r, inline: true },
-                      { name: "Impact Score", value: $i, inline: true },
-                      { name: "Recommendation", value: $rec, inline: true }
-                    ]
-                  }]
-                }')
+              echo "$entry" | jq -c '.value[]' | while read -r article; do
+                TITLE=$(echo "$article" | jq -r '.title')
+                SENTIMENT=$(echo "$article" | jq -r '.sentiment')
+                INSIGHT=$(echo "$article" | jq -r '.insight')
 
-              curl -s -X POST -H "Content-Type: application/json" \
-                -d "$PAYLOAD" "$NEWS_WEBHOOK"
+                PAYLOAD=$(jq -c -n \
+                  --arg t "$TICKER" \
+                  --arg title "$TITLE" \
+                  --arg se "$SENTIMENT" \
+                  --arg insight "$INSIGHT" \
+                  '{
+                    embeds: [{
+                      title: ($t + " News"),
+                      color: 3447003,
+                      fields: [
+                        { name: "Title", value: $title, inline: false },
+                        { name: "Sentiment", value: $se, inline: true },
+                        { name: "Insight", value: $insight, inline: false }
+                      ]
+                    }]
+                  }')
 
-              sleep 1
+                curl -s -X POST -H "Content-Type: application/json" \
+                  -d "$PAYLOAD" "$NEWS_WEBHOOK"
+
+                sleep 1
+              done
             done
           else
             echo "NEWS JSON is empty — skipping"
