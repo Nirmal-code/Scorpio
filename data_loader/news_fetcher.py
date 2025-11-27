@@ -16,16 +16,14 @@ class NewsFetcher:
         self.news_articles = {}
     
     def get_latest_news(self, ticker, limit=20):
-        #&published_utc=2025-11-26
         today_str = date.today().strftime("%Y-%m-%d")
-        url = f"https://api.massive.com/v2/reference/news?ticker={ticker}&published_utc=2025-11-26&order=asc&limit={limit}&sort=published_utc&apiKey={API_KEY}"
+        url = f"https://api.massive.com/v2/reference/news?ticker={ticker}&published_utc={today_str}&order=asc&limit={limit}&sort=published_utc&apiKey={API_KEY}"
         response = requests.get(url)
         if response.status_code == 200:
             return response.json()
         return []
     
     def get_relevant_news_articles(self, tickers, limit=20):
-
         for ticker in tickers:
             articles = self.get_latest_news(limit=limit, ticker=ticker)
             if (len(articles) == 0):
