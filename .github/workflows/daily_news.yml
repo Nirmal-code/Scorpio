@@ -1,4 +1,4 @@
-name: Daily Metrics Run
+name: Daily News Run
 
 on:
   schedule:
