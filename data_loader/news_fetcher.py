@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta, timezone, datetime
 from dotenv import load_dotenv
 import requests
 import os
@@ -16,8 +16,10 @@ class NewsFetcher:
         self.news_articles = {}
     
     def get_latest_news(self, ticker, limit=20):
-        today_str = date.today().strftime("%Y-%m-%d")
-        url = f"https://api.massive.com/v2/reference/news?ticker={ticker}&published_utc={today_str}&order=asc&limit={limit}&sort=published_utc&apiKey={API_KEY}"
+        now = datetime.now(timezone.utc)
+        five_hour_prev = now - timedelta(hours=12)
+        timestamp = five_hour_prev.isoformat().replace("+00:00", "Z")
+        url = f"https://api.massive.com/v2/reference/news?ticker={ticker}&published_utc.gt={timestamp}&order=asc&limit={limit}&sort=published_utc&apiKey={API_KEY}"
         response = requests.get(url)
         if response.status_code == 200:
             return response.json()
@@ -62,6 +64,6 @@ class NewsFetcher:
                 print(f"Title: {title}")
                 print(f"Insight: {insight}")
                 print(f"Sentiment: {sentiment}")
-
+                
                 
                 print("---------------------")
