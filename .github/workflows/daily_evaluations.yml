@@ -42,35 +42,39 @@ jobs:
         env:
           EVAL_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_EVAL }}
         run: |
-          qs() { printf "%s" "$1"; }
-
           EVAL_FILE="${{ steps.evaluation.outputs.evaluation_file }}"
 
-          ###########################################################
-          # MODEL EVALUATION — expects summary and recommendation arrays
-          ###########################################################
           if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
-            SUMMARY=$(jq -r '.summary | map("- " + .) | join("\n")' "$EVAL_FILE")
-            RECOMMENDATION=$(jq -r '.recommendation | map("- " + .) | join("\n")' "$EVAL_FILE")
 
-            PAYLOAD=$(jq -c -n \
-              --arg summary "$SUMMARY" \
-              --arg recommendation "$RECOMMENDATION" \
+            PAYLOAD=$(jq -c \
+              --argjson summary "$(jq '.summary' "$EVAL_FILE")" \
+              --argjson recommendation "$(jq '.recommendation' "$EVAL_FILE")" \
               '{
                 embeds: [{
                   title: "Daily Model Evaluation",
                   color: 3447003,
                   fields: [
-                    { name: "Summary", value: $summary, inline: false },
-                    { name: "Recommendation", value: $recommendation, inline: false }
+                    { 
+                      name: "Summary", 
+                      value: ($summary | map("- " + .) | join("\n")), 
+                      inline: false 
+                    },
+                    { 
+                      name: "Recommendation", 
+                      value: ($recommendation | map("- " + .) | join("\n")), 
+                      inline: false 
+                    }
                   ]
                 }]
               }')
 
-            curl -s -X POST -H "Content-Type: application/json" \
-              -d "$PAYLOAD" "$EVAL_WEBHOOK"
+            curl -s -X POST \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              "$EVAL_WEBHOOK"
 
             sleep 1
           else
             echo "EVALUATION JSON missing summary/recommendation — skipping"
           fi
+
