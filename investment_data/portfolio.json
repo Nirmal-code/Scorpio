@@ -1,5 +1,0 @@
-{
-  "AAPL": { "shares": 10, "avg_cost": 150 },
-  "MSFT": { "shares": 5, "avg_cost": 310 },
-  "NVDA": { "shares": 3, "avg_cost": 900 }
-}

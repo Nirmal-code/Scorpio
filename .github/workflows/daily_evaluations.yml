@@ -1,0 +1,76 @@
+name: Daily Evaluations Run
+
+on:
+  schedule:
+    - cron: "30 */12 * * *"
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y jq bc
+
+      # -----------------------------------------------------------
+      # FETCH MODEL EVALUATION (save to file)
+      # -----------------------------------------------------------
+      - name: Fetch model evaluation
+        id: evaluation
+        run: |
+          curl -s \
+            -H "api-key: ${{ secrets.API_KEY }}" \
+            "${{ secrets.PUBLIC_RUN_MODEL_URL }}" \
+            > evaluation.json
+
+          echo "evaluation_file=evaluation.json" >> $GITHUB_OUTPUT
+
+      # -----------------------------------------------------------
+      # DEBUG
+      # -----------------------------------------------------------
+      - name: Debug raw output
+        run: |
+          echo "---- EVALUATION.JSON ----"
+          cat "${{ steps.evaluation.outputs.evaluation_file }}"
+          echo ""
+
+      # -----------------------------------------------------------
+      # SEND DISCORD
+      # -----------------------------------------------------------
+      - name: Send Discord Messages
+        env:
+          EVAL_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_EVAL }}
+        run: |
+          qs() { printf "%s" "$1"; }
+
+          EVAL_FILE="${{ steps.evaluation.outputs.evaluation_file }}"
+
+          ###########################################################
+          # MODEL EVALUATION — expects summary and recommendation arrays
+          ###########################################################
+          if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
+            SUMMARY=$(jq -r '.summary | map("- " + .) | join("\n")' "$EVAL_FILE")
+            RECOMMENDATION=$(jq -r '.recommendation | map("- " + .) | join("\n")' "$EVAL_FILE")
+
+            PAYLOAD=$(jq -c -n \
+              --arg summary "$SUMMARY" \
+              --arg recommendation "$RECOMMENDATION" \
+              '{
+                embeds: [{
+                  title: "Daily Model Evaluation",
+                  color: 3447003,
+                  fields: [
+                    { name: "Summary", value: $summary, inline: false },
+                    { name: "Recommendation", value: $recommendation, inline: false }
+                  ]
+                }]
+              }')
+
+            curl -s -X POST -H "Content-Type: application/json" \
+              -d "$PAYLOAD" "$EVAL_WEBHOOK"
+
+            sleep 1
+          else
+            echo "EVALUATION JSON missing summary/recommendation — skipping"
+          fi
