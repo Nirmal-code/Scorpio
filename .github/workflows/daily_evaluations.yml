@@ -47,7 +47,6 @@ jobs:
           if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
 
           PAYLOAD=$(jq -c \
-            --slurpfile eval "$EVAL_FILE" \
             '{
                 embeds: [{
                   title: "Daily Model Evaluation",
@@ -55,17 +54,18 @@ jobs:
                   fields: [
                     {
                       name: "Summary",
-                      value: ($eval[0].summary | map("- " + .) | join("\n")),
+                      value: (.summary | map("- " + . | tojson) | join("\n")),
                       inline: false
                     },
                     {
                       name: "Recommendation",
-                      value: ($eval[0].recommendation | map("- " + .) | join("\n")),
+                      value: (.recommendation | map("- " + . | tojson) | join("\n")),
                       inline: false
                     }
                   ]
                 }]
-              }')
+              }' "$EVAL_FILE")
+
 
             curl -s -X POST \
               -H "Content-Type: application/json" \
