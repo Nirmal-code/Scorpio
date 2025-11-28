@@ -46,23 +46,22 @@ jobs:
 
           if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
 
-            PAYLOAD=$(jq -c \
-              --argjson summary "$(jq '.summary' "$EVAL_FILE")" \
-              --argjson recommendation "$(jq '.recommendation' "$EVAL_FILE")" \
-              '{
+          PAYLOAD=$(jq -c \
+            --slurpfile eval "$EVAL_FILE" \
+            '{
                 embeds: [{
                   title: "Daily Model Evaluation",
                   color: 3447003,
                   fields: [
-                    { 
-                      name: "Summary", 
-                      value: ($summary | map("- " + .) | join("\n")), 
-                      inline: false 
+                    {
+                      name: "Summary",
+                      value: ($eval[0].summary | map("- " + .) | join("\n")),
+                      inline: false
                     },
-                    { 
-                      name: "Recommendation", 
-                      value: ($recommendation | map("- " + .) | join("\n")), 
-                      inline: false 
+                    {
+                      name: "Recommendation",
+                      value: ($eval[0].recommendation | map("- " + .) | join("\n")),
+                      inline: false
                     }
                   ]
                 }]

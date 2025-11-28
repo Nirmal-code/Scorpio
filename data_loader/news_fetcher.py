@@ -48,7 +48,6 @@ class NewsFetcher:
                     "insight": stock_insight.get("sentiment_reasoning", "")})
                 
             self.news_articles[ticker] = all_insights
-        self.print_relevant_news()
         return self.news_articles
     
     def print_relevant_news(self):
