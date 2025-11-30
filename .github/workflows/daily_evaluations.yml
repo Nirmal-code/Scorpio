@@ -24,7 +24,7 @@ jobs:
             "${{ secrets.PUBLIC_RUN_MODEL_URL }}" \
             > evaluation.json
 
-          echo "evaluation_file=evaluation.json" >> "$GITHUB_OUTPUT"
+          echo "evaluation_file=evaluation.json" >> $GITHUB_OUTPUT
 
       # -----------------------------------------------------------
       # DEBUG
@@ -44,33 +44,43 @@ jobs:
         run: |
           EVAL_FILE="${{ steps.evaluation.outputs.evaluation_file }}"
 
-          # Only send if both keys exist
           if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
-            SUMMARY=$(jq -r '.summary // [] | join("\n- ")' "$EVAL_FILE")
-            RECOMMENDATION=$(jq -r '.recommendation // [] | join("\n- ")' "$EVAL_FILE")
 
-            # Build JSON payload safely with jq (no heredoc)
-            PAYLOAD=$(jq -c --arg summary "$SUMMARY" --arg recommendation "$RECOMMENDATION" '
-              {
-                content: "Daily Model Evaluation",
-                embeds: [
+          PAYLOAD=$(jq -c '
+            def clean(s):
+              # encode to JSON string → remove quotes → safe unicode → clean escaped chars
+              (s | tojson | sub("^\""; "") | sub("\"$"; "") | gsub("\\\\u2010"; "-") | gsub("\\\\u2248"; "~") );
+
+            {
+              embeds: [{
+                title: "Daily Model Evaluation",
+                color: 3447003,
+                fields: [
                   {
-                    title: "Summary",
-                    description: ("- " + $summary)
+                    name: "Summary",
+                    value: (.summary | map("- " + clean(.)) | join("\n")),
+                    inline: false
                   },
                   {
-                    title: "Recommendations",
-                    description: ("- " + $recommendation)
+                    name: "Recommendation",
+                    value: (.recommendation | map("- " + clean(.)) | join("\n")),
+                    inline: false
                   }
                 ]
-              }
-            ')
+              }]
+            }
+          ' "$EVAL_FILE")
 
-            echo "---- DISCORD PAYLOAD ----"
-            echo "$PAYLOAD"
 
-            curl -s -X POST \
-              -H "Content-Type: application/json" \
+
+          echo "FINAL PAYLOAD:"
+          echo "$PAYLOAD"
+          echo ""
+
+          echo "Attempting jq re-parse:"
+          echo "$PAYLOAD" | jq . || echo "❌ INVALID JSON PAYLOAD"
+
+          curl -v -H "Content-Type: application/json" \
               -d "$PAYLOAD" \
               "$EVAL_WEBHOOK"
 
@@ -78,3 +88,4 @@ jobs:
           else
             echo "EVALUATION JSON missing summary/recommendation — skipping"
           fi
+
