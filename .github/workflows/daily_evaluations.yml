@@ -46,43 +46,43 @@ jobs:
 
           if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
 
-          PAYLOAD=$(jq -c '
-            def clean(s):
-              # encode to JSON string → remove quotes → safe unicode → clean escaped chars
-              (s | tojson | sub("^\""; "") | sub("\"$"; "") | gsub("\\\\u2010"; "-") | gsub("\\\\u2248"; "~") );
+            PAYLOAD=$(jq -c '
+              def clean(s):
+                # encode to JSON string → remove quotes → safe unicode → clean escaped chars
+                (s | tojson | sub("^\""; "") | sub("\"$"; "") | gsub("\\\\u2010"; "-") | gsub("\\\\u2248"; "~") );
 
-            {
-              embeds: [{
-                title: "Daily Model Evaluation",
-                color: 3447003,
-                fields: [
-                  {
-                    name: "Summary",
-                    value: (.summary | map("- " + clean(.)) | join("\n")),
-                    inline: false
-                  },
-                  {
-                    name: "Recommendation",
-                    value: (.recommendation | map("- " + clean(.)) | join("\n")),
-                    inline: false
-                  }
-                ]
-              }]
-            }
-          ' "$EVAL_FILE")
+              {
+                embeds: [{
+                  title: "Daily Model Evaluation",
+                  color: 3447003,
+                  fields: [
+                    {
+                      name: "Summary",
+                      value: (.summary | map("- " + clean(.)) | join("\n")),
+                      inline: false
+                    },
+                    {
+                      name: "Recommendation",
+                      value: (.recommendation | map("- " + clean(.)) | join("\n")),
+                      inline: false
+                    }
+                  ]
+                }]
+              }
+            ' "$EVAL_FILE")
 
 
 
-          echo "FINAL PAYLOAD:"
-          echo "$PAYLOAD"
-          echo ""
+            echo "FINAL PAYLOAD:"
+            echo "$PAYLOAD"
+            echo ""
 
-          echo "Attempting jq re-parse:"
-          echo "$PAYLOAD" | jq . || echo "❌ INVALID JSON PAYLOAD"
+            echo "Attempting jq re-parse:"
+            echo "$PAYLOAD" | jq . || echo "❌ INVALID JSON PAYLOAD"
 
-          curl -v -H "Content-Type: application/json" \
-              -d "$PAYLOAD" \
-              "$EVAL_WEBHOOK"
+            curl -v -H "Content-Type: application/json" \
+                -d "$PAYLOAD" \
+                "$EVAL_WEBHOOK"
 
             sleep 1
           else
