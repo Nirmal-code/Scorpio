@@ -1,10 +1,10 @@
 from datetime import date, timedelta, timezone, datetime
+import time
 from dotenv import load_dotenv
 import requests
 import os
 
 
-BASE_URL = "https://api.massive.com/v2/reference/news?order=asc&limit=20&sort=published_utc"
 
 load_dotenv()
 
@@ -16,11 +16,19 @@ class NewsFetcher:
         self.news_articles = {}
     
     def get_latest_news(self, ticker, limit=20):
-        now = datetime.now(timezone.utc)
-        five_hour_prev = now - timedelta(hours=12)
-        timestamp = five_hour_prev.isoformat().replace("+00:00", "Z")
-        url = f"https://api.massive.com/v2/reference/news?ticker={ticker}&published_utc.gt={timestamp}&order=asc&limit={limit}&sort=published_utc&apiKey={API_KEY}"
-        response = requests.get(url)
+        # Retry 10 times if 429 error. Limited number of requests for free tier on massive
+        for i in range (10):
+            now = datetime.now(timezone.utc)
+            five_hour_prev = now - timedelta(hours=12)
+            timestamp = five_hour_prev.isoformat().replace("+00:00", "Z")
+            url = f"https://api.massive.com/v2/reference/news?ticker={ticker}&published_utc.gt={timestamp}&order=asc&limit={limit}&sort=published_utc&apiKey={API_KEY}"
+            response = requests.get(url)
+
+            if (response.status_code == 429):
+                time.sleep(20)
+            else:
+                break
+
         if response.status_code == 200:
             return response.json()
         return []

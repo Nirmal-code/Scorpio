@@ -54,9 +54,8 @@ def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(Non
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid API Key")
     
     # Ensure we always work with a list of strings and have a sensible fallback
-    tickers_list = str(tickers).strip().split(',') if tickers else []
     p = get_pipeline()   # lazy load here
-    results = p.run(tickers_list)
+    results = p.run()
 
     return JSONResponse(content=results)
 
@@ -65,10 +64,8 @@ def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(Non
     if api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid API Key")
     
-    # Ensure we always work with a list of strings and have a sensible fallback
-    tickers_list = str(tickers).strip().split(',') if tickers else []
     n = get_news_pipeline()   # lazy load here
-    results = n.run(tickers_list)
+    results = n.run()
 
     return JSONResponse(content=results)
 
@@ -78,9 +75,9 @@ def run_pipeline(api_key: str = Header(None), tickers: Optional[str] = Query(Non
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid API Key")
     
     # Ensure we always work with a list of strings and have a sensible fallback
-    tickers_list = str(tickers).strip().split(',') if tickers else []
+    # tickers_list = str(tickers).strip().split(',') if tickers else []
     n = get_model_pipeline()   # lazy load here
-    results = n.run(tickers_list)
+    results = n.run()
 
     return JSONResponse(content=results)
 
