@@ -46,27 +46,35 @@ jobs:
 
           if jq -e '.summary and .recommendation' "$EVAL_FILE" >/dev/null 2>&1; then
 
-            PAYLOAD=$(jq -c '
-                {
-                  embeds: [{
+            SUMMARY=$(jq -r '.summary // [] | join("\n- ")' "$EVAL_FILE")
+            RECOMMEND=$(jq -r '.recommendation // [] | join("\n- ")' "$EVAL_FILE")
+
+            PAYLOAD=$(jq -n \
+              --arg summary "$SUMMARY" \
+              --arg recommendation "$RECOMMEND" \
+              '
+              {
+                embeds: [
+                  {
                     title: "Daily Model Evaluation",
                     color: 3447003,
                     fields: [
                       {
                         name: "Summary",
-                        value: (.summary | map("- " + .) | join("\n")),
+                        value: $summary,
                         inline: false
                       },
                       {
                         name: "Recommendation",
-                        value: (.recommendation | map("- " + .) | join("\n")),
+                        value: $recommendation,
                         inline: false
                       }
                     ]
-                  }]
-                }
+                  }
+                ]
               }
-            ' "$EVAL_FILE")
+            ')
+
 
 
 
