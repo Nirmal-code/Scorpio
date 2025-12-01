@@ -58,12 +58,8 @@ jobs:
                   {
                     title: "Daily Model Evaluation",
                     color: 3447003,
+                    description: $summary,
                     fields: [
-                      {
-                        name: "Summary",
-                        value: $summary,
-                        inline: false
-                      },
                       {
                         name: "Recommendation",
                         value: $recommendation,
