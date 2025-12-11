@@ -16,6 +16,7 @@ load_dotenv()
 API_KEY = os.getenv("API_KEY")
 
 app = FastAPI()
+
 pipeline = None
 
 newsPipeline = None
