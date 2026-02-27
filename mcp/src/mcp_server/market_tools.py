@@ -1,19 +1,12 @@
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 from typing import Any, Dict
 
 import numpy as np
 import yfinance as yf
 
-# Make the project root importable so we can reuse existing metric logic
-REPO_ROOT = Path(__file__).resolve().parents[3]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.append(str(REPO_ROOT))
-
-from evaluator_module.metric_evaluator import MetricEvaluator
+from mcp_server.metrics import MetricEvaluator
 
 def _to_native(value: Any) -> Any:
     """Convert NumPy/pandas scalars to plain Python types for JSON safety."""

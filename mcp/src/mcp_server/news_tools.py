@@ -73,6 +73,7 @@ async def search(ticker: str, since_iso: str | None = None, limit: int = 20) -> 
             "apiKey": MASSIVE_API_KEY,
         }
         resp = None
+        # Want to try again 10 times if we hit rate limits, which Massive API might return as 429 or a 200 with an error message
         for attempt in range(10):
             resp = requests.get(BASE_URL, params=params, timeout=30)
             if resp.status_code != 429:
