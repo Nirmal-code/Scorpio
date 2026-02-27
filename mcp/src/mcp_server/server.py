@@ -17,7 +17,6 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
 
-from mcp_server import tools
 from mcp_server import market_tools as market
 from mcp_server import news_tools as news
 from mcp_server import portfolio_tools as portfolio
@@ -26,28 +25,6 @@ server = Server("scorpio-mcp")
 
 # Simple tool registry: name -> metadata + callable
 REGISTERED_TOOLS = {
-    "ping": {
-        "fn": tools.ping,
-        "description": (tools.ping.__doc__ or "").strip() or "Ping the server",
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-        },
-    },
-    "echo": {
-        "fn": tools.echo,
-        "description": (tools.echo.__doc__ or "").strip() or "Echo a message",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "message": {
-                    "type": "string",
-                    "description": "Message to echo back",
-                }
-            },
-            "required": ["message"],
-        },
-    },
     "market_get_snapshot": {
         "fn": market.get_snapshot,
         "description": (market.get_snapshot.__doc__ or "").strip()
@@ -96,6 +73,55 @@ REGISTERED_TOOLS = {
         "fn": portfolio.get_holdings,
         "description": (portfolio.get_holdings.__doc__ or "").strip()
         or "Return holdings for a Wealthsimple user by email",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "Wealthsimple account email",
+                }
+            },
+            "required": ["email"],
+        },
+    },
+    "portfolio_set_preference": {
+        "fn": portfolio.set_preference,
+        "description": (portfolio.set_preference.__doc__ or "").strip()
+        or "Upsert a preference for a Wealthsimple user by email",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "Wealthsimple account email",
+                },
+                "preference": {
+                    "type": "string",
+                    "description": "Preference payload (JSON string or text)",
+                },
+            },
+            "required": ["email", "preference"],
+        },
+    },
+    "portfolio_post_holdings": {
+        "fn": portfolio.post_holdings_for_user,
+        "description": (portfolio.post_holdings_for_user.__doc__ or "").strip()
+        or "Fetch holdings from Wealthsimple and upsert to Supabase by email",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "description": "Wealthsimple account email",
+                }
+            },
+            "required": ["email"],
+        },
+    },
+    "portfolio_get_preference": {
+        "fn": portfolio.get_preference,
+        "description": (portfolio.get_preference.__doc__ or "").strip()
+        or "Get the preference entry for a Wealthsimple user by email",
         "input_schema": {
             "type": "object",
             "properties": {

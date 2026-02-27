@@ -1,6 +1,11 @@
 import json
+import os
 from getpass import getpass
+from dotenv import load_dotenv
 from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, WSAPISession
+
+# Load repo-level .env if present (used for username only)
+load_dotenv()
 
 
 class WSApi:
@@ -12,8 +17,8 @@ class WSApi:
         )
 
         # Login fresh each run (no persistence)
-        username = input("Wealthsimple username (email): ")
-        password = None
+        username = os.getenv("WS_USERNAME") or input("Wealthsimple username (email): ")
+        password = None  # always prompt; do not read from env
         otp_answer = None
         while True:
             try:
