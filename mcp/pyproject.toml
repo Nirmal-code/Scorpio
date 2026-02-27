@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-server"
+version = "0.1.0"
+description = "Skeleton Model Context Protocol server"
+authors = [{name = "Your Name", email = "you@example.com"}]
+requires-python = ">=3.10"
+dependencies = [
+    "mcp>=0.2.0",
+    "anyio>=4.0",
+    "typer>=0.12",
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "yfinance>=0.2.40",
+    "requests>=2.32",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"

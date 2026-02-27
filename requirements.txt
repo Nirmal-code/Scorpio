@@ -5,3 +5,6 @@ fastapi
 pipeline
 uvicorn
 openai
+supabase
+ws-api
+keyring
