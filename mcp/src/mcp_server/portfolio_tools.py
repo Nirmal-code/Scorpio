@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import os
 from pathlib import Path
@@ -12,10 +11,12 @@ from supabase import Client, create_client
 
 from mcp_server.ws import WSApi
 
-# Load repo-level .env for Supabase credentials (falls back to default search)
-ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
-if ROOT_ENV.exists():
-    load_dotenv(ROOT_ENV)
+# Load nearest .env for Supabase credentials; safe for site-packages installs
+for p in Path(__file__).resolve().parents:
+    env_file = p / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
+        break
 else:
     load_dotenv()
 

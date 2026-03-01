@@ -1,5 +1,4 @@
 requests
-httpx
 dotenv
 yfinance
 fastapi
@@ -9,3 +8,5 @@ openai
 supabase
 ws-api
 keyring
+typer
+mcp

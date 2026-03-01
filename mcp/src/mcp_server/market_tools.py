@@ -61,7 +61,6 @@ async def get_snapshot(ticker: str) -> str:
         "ma200": _to_native(latest.get("ma200")),
         "rel_strength_vs_spy": _to_native(latest.get("rel_strength")),
         "signals": signals,
-        "evaluation": evaluation,
     }
 
     # Return JSON string so MCP clients can easily parse it

@@ -11,10 +11,12 @@ import anyio
 import requests
 from dotenv import load_dotenv
 
-# Load repo-level .env if present so VS Code Agent picks up the key
-ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
-if ROOT_ENV.exists():
-    load_dotenv(ROOT_ENV)
+# Load nearest .env if present; avoid IndexError when installed site-wide
+for p in Path(__file__).resolve().parents:
+    env_file = p / ".env"
+    if env_file.exists():
+        load_dotenv(env_file)
+        break
 else:
     load_dotenv()  # fallback to default search
 
@@ -72,14 +74,8 @@ async def search(ticker: str, since_iso: str | None = None, limit: int = 20) -> 
             "sort": "published_utc",
             "apiKey": MASSIVE_API_KEY,
         }
-        resp = None
         # Want to try again 10 times if we hit rate limits, which Massive API might return as 429 or a 200 with an error message
-        for attempt in range(10):
-            resp = requests.get(BASE_URL, params=params, timeout=30)
-            if resp.status_code != 429:
-                break
-            if attempt < 9:
-                time.sleep(20)  # backoff before next retry
+        resp = requests.get(BASE_URL, params=params, timeout=30)
         resp.raise_for_status()
         payload = resp.json()
         results = payload.get("results") if isinstance(payload, dict) else None
