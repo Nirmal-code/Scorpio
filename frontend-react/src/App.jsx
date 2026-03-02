@@ -9,7 +9,15 @@ const RUN_API_BASE = import.meta.env.VITE_RUN_API_BASE || 'http://165.227.39.159
 const MCP_CLIENT_BEARER =
   import.meta.env.VITE_MCP_CLIENT_BEARER ||
   (typeof window !== 'undefined' ? window.__MCP_CLIENT_BEARER__ : '')
-  
+
+const formatMs = (ms) => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
+  const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0')
+  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0')
+  const s = String(totalSeconds % 60).padStart(2, '0')
+  return `${h}:${m}:${s}`
+}
+
 function Card({ item }) {
   return (
     <article className="card">
@@ -123,6 +131,8 @@ export default function App() {
   const [userExists, setUserExists] = useState(null)
   const [userId, setUserId] = useState(null)
   const [jobStatus, setJobStatus] = useState('')
+  const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
+  const twelveHoursMs = 12 * 60 * 60 * 1000
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -242,25 +252,8 @@ export default function App() {
   }
 
   const handleRefreshJob = async () => {
-    setError('')
-    setJobStatus('running')
-    const authedEmail = session?.user?.email || ''
-    if (!authedEmail) {
-      setError('Please sign in with Google to fetch your history.')
-      setJobStatus('')
-      return
-    }
-    setLoading(true)
-    try {
-      const runId = await triggerRemoteRun(authedEmail)
-      await pollRunStatus(runId)
-      await fetchRuns()
-    } catch (e) {
-      setError(e?.message || 'Could not trigger run.')
-    } finally {
-      setLoading(false)
-      setJobStatus('')
-    }
+    // Manual refresh now only reloads existing runs; it does not trigger a remote job
+    await fetchRuns()
   }
 
   const handleLogout = async () => {
@@ -333,6 +326,47 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
 
+  // Periodic auto-run trigger with countdown every 12h (per user)
+  useEffect(() => {
+    let timer
+    let triggering = false
+    const tick = async () => {
+      if (!session?.user?.email) {
+        setNextRunMs(twelveHoursMs)
+        return
+      }
+      const key = `last_run_trigger_${session.user.email}`
+      const last = Number(localStorage.getItem(key) || 0)
+      const now = Date.now()
+      const elapsed = now - last
+      const remaining = Math.max(0, twelveHoursMs - elapsed)
+      setNextRunMs(remaining)
+
+      if (remaining === 0 && !triggering && jobStatus !== 'running') {
+        triggering = true
+        setJobStatus('running')
+        try {
+          const runId = await triggerRemoteRun(session.user.email)
+          await pollRunStatus(runId)
+          localStorage.setItem(key, String(Date.now()))
+          await fetchRuns()
+        } catch (e) {
+          setError(e?.message || 'Could not trigger scheduled run.')
+        } finally {
+          setJobStatus('')
+          triggering = false
+        }
+      }
+    }
+
+    tick()
+    timer = setInterval(tick, 1000)
+    return () => {
+      if (timer) clearInterval(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.email, jobStatus])
+
   const LoginPage = () => (
     <main className="page auth-container">
       <div className="auth-hero">
@@ -389,6 +423,9 @@ export default function App() {
             <span className="pill">{countLabel}</span>
           </div>
           {jobStatus && <div className="info">Job status: {jobStatus}</div>}
+          {session?.user?.email && (
+            <div className="muted">Next auto-refresh in {formatMs(nextRunMs)}</div>
+          )}
 
           {loading && <div className="empty-state">Loading…</div>}
           {!loading && !hasResults && !error && (

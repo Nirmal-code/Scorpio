@@ -219,3 +219,10 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 .form-actions { display: flex; gap: 10px; margin-top: 4px; }
 .success { color: #1a9c73; margin-top: 8px; }
 .info { color: #2563eb; margin: 8px 0; font-weight: 600; }
+.table-wrap { width: 100%; overflow-x: auto; margin-top: 12px; }
+.table { width: 100%; border-collapse: collapse; }
+.table th, .table td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+.table thead { background: var(--pill); }
+.table tr:nth-child(even) { background: #f6f8fd; }
+.actions { display: flex; gap: 6px; }
+.ghost.danger { border-color: #f87171; color: #f87171; }

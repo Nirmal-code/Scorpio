@@ -10,6 +10,7 @@ export default function HoldingsPage({ session, onNoUser }) {
     book_value: '',
   })
   const [userId, setUserId] = useState(null)
+  const [holdings, setHoldings] = useState([])
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
@@ -33,6 +34,7 @@ export default function HoldingsPage({ session, onNoUser }) {
           return
         }
         setUserId(data.id)
+        await fetchHoldings(data.id)
       } catch (e) {
         setError(e.message || 'Could not resolve user')
       }
@@ -40,6 +42,21 @@ export default function HoldingsPage({ session, onNoUser }) {
     fetchUserId()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
+
+  const fetchHoldings = async (uid) => {
+    if (!uid) return
+    try {
+      const { data, error: hErr } = await supabase
+        .from('holdings')
+        .select('ticker, quantity, avg_cost, market_value, book_value')
+        .eq('user_id', uid)
+        .order('ticker', { ascending: true })
+      if (hErr) throw hErr
+      setHoldings(data || [])
+    } catch (e) {
+      setError(e.message || 'Could not fetch holdings.')
+    }
+  }
 
   const onChange = (e) => {
     const { name, value } = e.target
@@ -75,6 +92,7 @@ export default function HoldingsPage({ session, onNoUser }) {
         .upsert(payload, { onConflict: 'user_id,ticker' })
       if (upsertErr) throw upsertErr
       setMessage('Saved!')
+      await fetchHoldings(userId)
     } catch (e) {
       setError(e.message || 'Could not save holding.')
     } finally {
@@ -86,6 +104,37 @@ export default function HoldingsPage({ session, onNoUser }) {
     setForm({ ticker: '', quantity: '', avg_cost: '', market_value: '', book_value: '' })
     setMessage('')
     setError('')
+  }
+
+  const onEdit = (h) => {
+    setForm({
+      ticker: h.ticker || '',
+      quantity: h.quantity ?? '',
+      avg_cost: h.avg_cost ?? '',
+      market_value: h.market_value ?? '',
+      book_value: h.book_value ?? '',
+    })
+  }
+
+  const onDelete = async (ticker) => {
+    if (!userId || !ticker) return
+    setLoading(true)
+    setError('')
+    setMessage('')
+    try {
+      const { error: delErr } = await supabase
+        .from('holdings')
+        .delete()
+        .eq('user_id', userId)
+        .eq('ticker', ticker)
+      if (delErr) throw delErr
+      setMessage('Deleted.')
+      await fetchHoldings(userId)
+    } catch (e) {
+      setError(e.message || 'Could not delete holding.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -162,7 +211,49 @@ export default function HoldingsPage({ session, onNoUser }) {
           {error && <p className="error">{error}</p>}
         </form>
       </section>
+
+      <section className="panel">
+        <div className="results-head">
+          <h2>Current holdings</h2>
+          <span className="pill">{holdings.length}</span>
+        </div>
+        {holdings.length === 0 && <div className="empty-state">No holdings yet.</div>}
+        {holdings.length > 0 && (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Ticker</th>
+                  <th>Qty</th>
+                  <th>Avg Cost</th>
+                  <th>Market Value</th>
+                  <th>Book Value</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {holdings.map((h) => (
+                  <tr key={h.ticker}>
+                    <td>{h.ticker}</td>
+                    <td>{h.quantity ?? ''}</td>
+                    <td>{h.avg_cost ?? ''}</td>
+                    <td>{h.market_value ?? ''}</td>
+                    <td>{h.book_value ?? ''}</td>
+                    <td className="actions">
+                      <button type="button" className="ghost compact" onClick={() => onEdit(h)} disabled={loading}>
+                        Edit
+                      </button>
+                      <button type="button" className="ghost danger compact" onClick={() => onDelete(h.ticker)} disabled={loading}>
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
-
