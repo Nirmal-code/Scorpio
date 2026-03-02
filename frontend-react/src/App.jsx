@@ -29,7 +29,6 @@ function Card({ item }) {
 }
 
 export default function App() {
-  const [email, setEmail] = useState('')
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -62,7 +61,7 @@ export default function App() {
   const handleGoogleLogin = async () => {
     setError('')
     setAuthLoading(true)
-    const redirectTo = window.location.origin
+    const redirectTo = `${window.location.origin}/`
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
@@ -81,12 +80,17 @@ export default function App() {
     setLoading(false)
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const fetchRuns = async () => {
     setError('')
-    const value = (session?.user?.email || email || '').trim()
-    if (!value) {
-      setError('Please enter an email or log in.')
+    // Require an authenticated session; use the authed user's email for filtering
+    const { data: sessionData, error: sessionErr } = await supabase.auth.getSession()
+    if (sessionErr) {
+      setError(sessionErr.message)
+      return
+    }
+    const authedEmail = sessionData?.session?.user?.email || ''
+    if (!authedEmail) {
+      setError('Please sign in with Google to fetch your history.')
       return
     }
     setLoading(true)
@@ -95,7 +99,7 @@ export default function App() {
       const { data: users, error: userErr } = await supabase
         .from('users')
         .select('id')
-        .eq('wealthsimple_email', value)
+        .eq('wealthsimple_email', authedEmail)
         .limit(1)
       if (userErr) throw userErr
       if (!users || users.length === 0) {
@@ -131,62 +135,67 @@ export default function App() {
     }
   }
 
+  useEffect(() => {
+    // Auto-fetch once authenticated
+    if (session?.user?.email) {
+      fetchRuns()
+    } else {
+      setItems([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.user?.email])
+
   return (
     <div className="page">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">Scorpio · portfolio insights</p>
-          <h1>See your AI trading briefs</h1>
-          <p className="sub">
-            Enter the email tied to your account and pull every recommendation we’ve made for you.
-          </p>
-        </div>
-        <div className="badge">Live · MCP</div>
-      </header>
-
       {!session ? (
-        <div className="panel">
-          <label>Log in with Google to view your history</label>
-          <div className="input-row">
+        <main className="auth-container">
+          <div className="panel auth-panel">
+            <h1>Welcome back</h1>
+            <p className="sub">Sign in with Google to view your portfolio run summaries.</p>
             <button type="button" onClick={handleGoogleLogin} disabled={authLoading}>
               {authLoading ? 'Opening Google…' : 'Continue with Google'}
             </button>
+            {error && <p className="error">{error}</p>}
           </div>
-          <p className="hint">We use your Google email to look up your account and runs.</p>
-          {error && <p className="error">{error}</p>}
-        </div>
+        </main>
       ) : (
-        <form className="panel" onSubmit={handleSubmit}>
-          <label>Logged in as {session.user.email}</label>
-          <div className="input-row">
-            <button type="submit" disabled={loading}>
-              {loading ? 'Loading…' : 'Fetch history'}
-            </button>
-            <button type="button" className="ghost" onClick={handleLogout} disabled={loading}>
-              Sign out
-            </button>
-          </div>
-          <p className="hint">We query your runs for the last 7 days.</p>
-          {error && <p className="error">{error}</p>}
-        </form>
-      )}
+        <>
+          <header className="hero">
+            <div>
+              <p className="eyebrow">Scorpio · portfolio insights</p>
+              <h1>Run summaries</h1>
+              <p className="sub">Showing the last 7 days for {session.user.email}</p>
+            </div>
+            <div className="hero-actions">
+              <button type="button" onClick={fetchRuns} disabled={loading}>
+                {loading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button type="button" className="ghost" onClick={handleLogout} disabled={loading}>
+                Sign out
+              </button>
+            </div>
+          </header>
 
-      <section className="panel" id="results">
-        <div className="results-head">
-          <h2>Prediction history</h2>
-          <span className="pill">{countLabel}</span>
-        </div>
-        {!hasResults && !loading && !error && (
-          <div className="empty-state">No results yet. Try fetching with your email.</div>
-        )}
-        {hasResults && (
-          <div className="timeline">
-            {items.map((item, idx) => (
-              <Card key={`${item.ticker || 'item'}-${idx}`} item={item} />
-            ))}
-          </div>
-        )}
-      </section>
+          <section className="panel" id="results">
+            <div className="results-head">
+              <h2>Prediction history</h2>
+              <span className="pill">{countLabel}</span>
+            </div>
+            {loading && <div className="empty-state">Loading…</div>}
+            {!loading && !hasResults && !error && (
+              <div className="empty-state">No results yet from the last 7 days.</div>
+            )}
+            {error && <p className="error">{error}</p>}
+            {hasResults && (
+              <div className="timeline">
+                {items.map((item, idx) => (
+                  <Card key={`${item.ticker || 'item'}-${idx}`} item={item} />
+                ))}
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </div>
   )
 }

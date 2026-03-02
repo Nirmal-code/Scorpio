@@ -1,0 +1,27 @@
+// {
+// 	"servers": {
+// 		"scorpio_mcp_server": {
+// 			"type": "stdio",
+// 			"command": "../venv/bin/python",
+// 			"args": [
+// 				"-m",
+// 				"mcp_server.server",
+// 				"stdio"
+// 			],
+// 			"cwd": "mcp"
+// 		}
+// 	},
+// 	"inputs": []
+// }
+
+{
+  "servers": {
+    "scorpio": {
+      "type": "http",
+      "url": "http://165.227.39.159/mcp",
+      "headers": {
+        "Authorization": "Bearer 6a42005b34dad15d8f5f0653590f3cf2c5d08e2e6c6ca96ea5acfd34b1488e25"
+      }
+    }
+  }
+}
