@@ -326,47 +326,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
 
-  // Periodic auto-run trigger with countdown every 12h (per user)
-  useEffect(() => {
-    let timer
-    let triggering = false
-    const tick = async () => {
-      if (!session?.user?.email) {
-        setNextRunMs(twelveHoursMs)
-        return
-      }
-      const key = `last_run_trigger_${session.user.email}`
-      const last = Number(localStorage.getItem(key) || 0)
-      const now = Date.now()
-      const elapsed = now - last
-      const remaining = Math.max(0, twelveHoursMs - elapsed)
-      setNextRunMs(remaining)
-
-      if (remaining === 0 && !triggering && jobStatus !== 'running') {
-        triggering = true
-        setJobStatus('running')
-        try {
-          const runId = await triggerRemoteRun(session.user.email)
-          await pollRunStatus(runId)
-          localStorage.setItem(key, String(Date.now()))
-          await fetchRuns()
-        } catch (e) {
-          setError(e?.message || 'Could not trigger scheduled run.')
-        } finally {
-          setJobStatus('')
-          triggering = false
-        }
-      }
-    }
-
-    tick()
-    timer = setInterval(tick, 1000)
-    return () => {
-      if (timer) clearInterval(timer)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.email, jobStatus])
-
   const LoginPage = () => (
     <main className="page auth-container">
       <div className="auth-hero">
@@ -398,6 +357,50 @@ export default function App() {
     }
     if (!session) return <Navigate to="/login" replace />
     if (userExists === false) return <Navigate to="/login" replace />
+
+    // Periodic auto-run trigger with countdown every 12h (per user).
+    // Lives inside the summaries page so other pages (e.g., Holdings) don't re-render every second.
+    useEffect(() => {
+      let timer
+      let triggering = false
+
+      const tick = async () => {
+        if (!session?.user?.email) {
+          setNextRunMs(twelveHoursMs)
+          return
+        }
+        const key = `last_run_trigger_${session.user.email}`
+        const last = Number(localStorage.getItem(key) || 0)
+        const now = Date.now()
+        const elapsed = now - last
+        const remaining = Math.max(0, twelveHoursMs - elapsed)
+        setNextRunMs(remaining)
+
+        if (remaining === 0 && !triggering) {
+          triggering = true
+          setJobStatus('running')
+          try {
+            const runId = await triggerRemoteRun(session.user.email)
+            await pollRunStatus(runId)
+            localStorage.setItem(key, String(Date.now()))
+            await fetchRuns()
+          } catch (e) {
+            setError(e?.message || 'Could not trigger scheduled run.')
+          } finally {
+            setJobStatus('')
+            triggering = false
+          }
+        }
+      }
+
+      tick()
+      timer = setInterval(tick, 1000)
+      return () => {
+        if (timer) clearInterval(timer)
+      }
+      // We intentionally avoid jobStatus in deps to keep a stable interval.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session?.user?.email])
 
     return (
       <div className="page">
