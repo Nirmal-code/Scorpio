@@ -213,6 +213,7 @@ export default function App() {
   const twelveHoursMs = 12 * 60 * 60 * 1000
   const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
   const [nextSlotLabel, setNextSlotLabel] = useState('9:00 AM / 9:00 PM ET')
+  const [lastTriggeredSlot, setLastTriggeredSlot] = useState(null)
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -448,6 +449,7 @@ export default function App() {
         if (!session?.user?.email) {
           setNextRunMs(twelveHoursMs)
           setNextSlotLabel('9:00 AM / 9:00 PM ET')
+          setLastTriggeredSlot(null)
           return
         }
         const slotKey = `last_run_slot_${session.user.email}`
@@ -455,18 +457,24 @@ export default function App() {
         setNextRunMs(remainingMs)
         setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
 
+        // sync from storage once per render if needed
+        if (!lastTriggeredSlot) {
+          const stored = localStorage.getItem(slotKey)
+          if (stored) setLastTriggeredSlot(stored)
+        }
+
         // Trigger if we haven't run for the most recent slot (within a 6h grace window)
-        if (prevSlot && !triggering) {
-          const lastSlot = localStorage.getItem(slotKey)
+        if (prevSlot && !triggering && jobStatus !== 'running') {
           const nowMs = Date.now()
           const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
-          if (lastSlot !== prevSlot.id && withinWindow) {
+          if (lastTriggeredSlot !== prevSlot.id && withinWindow) {
             triggering = true
             setJobStatus('running')
             try {
               const runId = await triggerRemoteRun(session.user.email)
               await pollRunStatus(runId)
               localStorage.setItem(slotKey, prevSlot.id)
+              setLastTriggeredSlot(prevSlot.id)
               await fetchRuns()
             } catch (e) {
               setError(e?.message || 'Could not trigger scheduled run.')
@@ -478,13 +486,16 @@ export default function App() {
         }
 
         // Safety: if no prev slot matched but we're exactly at next slot time, still trigger
-        if (!prevSlot && remainingMs <= 0 && !triggering) {
+        if (!prevSlot && remainingMs <= 0 && !triggering && jobStatus !== 'running') {
           triggering = true
           setJobStatus('running')
           try {
             const runId = await triggerRemoteRun(session.user.email)
             await pollRunStatus(runId)
-            if (nextSlot) localStorage.setItem(slotKey, nextSlot.id)
+            if (nextSlot) {
+              localStorage.setItem(slotKey, nextSlot.id)
+              setLastTriggeredSlot(nextSlot.id)
+            }
             await fetchRuns()
           } catch (e) {
             setError(e?.message || 'Could not trigger scheduled run.')
@@ -496,7 +507,7 @@ export default function App() {
       }
 
       tick()
-      timer = setInterval(tick, 15000) // update roughly every 15s
+      timer = setInterval(tick, 15000) // update roughly every 15s without spamming
       return () => {
         if (timer) clearInterval(timer)
       }
