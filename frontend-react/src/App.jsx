@@ -62,12 +62,24 @@ export default function App() {
     setError('')
     setAuthLoading(true)
     const redirectTo = `${window.location.origin}/`
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo },
-    })
-    if (error) {
-      setError(error.message)
+    try {
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      })
+      if (error) {
+        throw error
+      }
+      // In some environments we need to manually follow the returned URL
+      if (data?.url) {
+        window.location.assign(data.url)
+      } else {
+        // No URL returned; re-enable the button so user can retry
+        setAuthLoading(false)
+        setError('No redirect URL returned. Please try again.')
+      }
+    } catch (err) {
+      setError(err.message || 'Could not start Google sign-in.')
       setAuthLoading(false)
     }
     // on success, Supabase will redirect; on return authLoading will reset in useEffect
