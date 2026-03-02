@@ -16,6 +16,7 @@ function Card({ item }) {
     <article className="card">
       <header>
         <div>
+          <p className="meta date-top">{item.date || ''}</p>
           <p className="ticker">{item.ticker || '—'}</p>
           <h3>{item.title || 'Recommendation'}</h3>
         </div>
@@ -29,7 +30,6 @@ function Card({ item }) {
         </div>
       )}
       <footer>
-        <span className="meta">{item.date || ''}</span>
         <span className="meta">{item.source || 'model'}</span>
       </footer>
     </article>
@@ -121,6 +121,7 @@ export default function App() {
   const [authBusy, setAuthBusy] = useState(false)
 
   const [session, setSession] = useState(null)
+  const [userExists, setUserExists] = useState(null)
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -135,16 +136,20 @@ export default function App() {
 
     setLoading(true)
     try {
-      const { data: users, error: userErr } = await supabase
+      const { data: userRow, error: userErr } = await supabase
         .from('users')
         .select('id')
         .eq('wealthsimple_email', authedEmail)
-        .limit(1)
+        .maybeSingle()
 
       if (userErr) throw userErr
-      if (!users || users.length === 0) throw new Error('No user found for that email')
+      if (!userRow) {
+        setUserExists(false)
+        throw new Error('No user found for that email')
+      }
+      setUserExists(true)
 
-      const userId = users[0].id
+      const userId = userRow.id
       const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
       const { data: runs, error: runsErr } = await supabase
@@ -162,7 +167,7 @@ export default function App() {
         summary: r.summary || '',
         title: 'Run summary',
         ticker: '',
-        date: r.created_at || '',
+        date: r.created_at ? new Date(r.created_at).toLocaleString() : '',
         source: 'runs',
         tone: 'neutral',
       }))
@@ -170,6 +175,11 @@ export default function App() {
     } catch (e) {
       setError(e?.message || 'Could not fetch history.')
       setItems([])
+      // If user lookup failed, force logout and send back to login
+      if (e?.message?.includes('No user found')) {
+        await supabase.auth.signOut()
+        setSession(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -209,21 +219,23 @@ export default function App() {
     let mounted = true
 
     const init = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession()
-        if (!mounted) return
-        if (error) setError(error.message)
-        setSession(data?.session ?? null)
-      } catch (e) {
-        if (mounted) setError(e?.message || 'Could not check session')
-      } finally {
-        if (mounted) setAuthChecked(true)
-      }
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      if (!mounted) return
+      if (error) setError(error.message)
+      setSession(data?.session ?? null)
+      setUserExists(null) // unknown until we check
+    } catch (e) {
+      if (mounted) setError(e?.message || 'Could not check session')
+    } finally {
+      if (mounted) setAuthChecked(true)
+    }
     }
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return
       setSession(newSession ?? null)
+      setUserExists(null) // reset until verified
     })
 
     init()
@@ -236,19 +248,30 @@ export default function App() {
 
   useEffect(() => {
     if (session?.user?.email) fetchRuns()
-    else setItems([])
+    else {
+      setItems([])
+      setUserExists(null)
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
 
   const LoginPage = () => (
     <main className="page auth-container">
+      <div className="auth-hero">
+        <p className="eyebrow">Scorpio · portfolio intelligence</p>
+        <h1>Enter the den.</h1>
+        <p className="sub">
+          Your AI-generated run summaries, all in one place. Sign in with Google to continue.
+        </p>
+        <div className="glow"></div>
+      </div>
       <div className="panel auth-panel">
-        <h1>Welcome back</h1>
-        <p className="sub">Sign in with Google to view your portfolio run summaries.</p>
-        <button type="button" onClick={handleGoogleLogin} disabled={authBusy}>
+        <h2>Sign in</h2>
+        <button type="button" className="btn-primary full" onClick={handleGoogleLogin} disabled={authBusy}>
           {authBusy ? 'Opening Google…' : 'Continue with Google'}
         </button>
         {error && <p className="error">{error}</p>}
+        <p className="notice">Note: private access only. Outside users are not permitted at this time.</p>
       </div>
     </main>
   )
@@ -262,6 +285,7 @@ export default function App() {
       )
     }
     if (!session) return <Navigate to="/login" replace />
+    if (userExists === false) return <Navigate to="/login" replace />
 
     return (
       <div className="page">
@@ -271,14 +295,14 @@ export default function App() {
             <h1>Run summaries</h1>
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
-          <div className="hero-actions">
-            <button type="button" onClick={fetchRuns} disabled={loading}>
-              {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <button type="button" className="ghost" onClick={handleLogout} disabled={loading}>
-              Sign out
-            </button>
-          </div>
+            <div className="hero-actions">
+              <button type="button" className="btn-primary compact" onClick={fetchRuns} disabled={loading}>
+                {loading ? 'Refreshing…' : 'Refresh'}
+              </button>
+              <button type="button" className="ghost compact" onClick={handleLogout} disabled={loading}>
+                Sign out
+              </button>
+            </div>
         </header>
 
         <section className="panel" id="results">
