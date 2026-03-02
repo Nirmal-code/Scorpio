@@ -10,7 +10,6 @@ const MCP_CLIENT_BEARER =
   import.meta.env.VITE_MCP_CLIENT_BEARER ||
   (typeof window !== 'undefined' ? window.__MCP_CLIENT_BEARER__ : '')
   
-
 function Card({ item }) {
   return (
     <article className="card">
