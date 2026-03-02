@@ -27,6 +27,33 @@ body {
   padding: 48px 20px 72px;
 }
 
+.navbar {
+  background: #ffffff;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.navbar-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.brand { font-weight: 700; letter-spacing: -0.01em; }
+.nav-links { display: flex; gap: 12px; align-items: center; }
+.nav-link {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 8px 12px;
+  border-radius: 10px;
+  transition: background 120ms ease, color 120ms ease;
+}
+.nav-link.active, .nav-link:hover { color: var(--text); background: var(--pill); }
+
 .hero {
   display: flex;
   justify-content: space-between;

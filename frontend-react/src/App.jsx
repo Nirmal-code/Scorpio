@@ -386,6 +386,25 @@ export default function App() {
 
   return (
     <BrowserRouter>
+      <div className="navbar">
+        <div className="navbar-inner">
+          <div className="brand">Scorpio</div>
+          <div className="nav-links">
+            <a
+              className={`nav-link ${window.location.pathname === '/summaries' ? 'active' : ''}`}
+              href="/summaries"
+            >
+              Summaries
+            </a>
+            <a
+              className={`nav-link ${window.location.pathname === '/holdings' ? 'active' : ''}`}
+              href="/holdings"
+            >
+              Holdings
+            </a>
+          </div>
+        </div>
+      </div>
       <AppRoutes />
     </BrowserRouter>
   )
