@@ -10,12 +10,91 @@ const MCP_CLIENT_BEARER =
   import.meta.env.VITE_MCP_CLIENT_BEARER ||
   (typeof window !== 'undefined' ? window.__MCP_CLIENT_BEARER__ : '')
 
+const TZ = 'America/New_York'
+
 const formatMs = (ms) => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000))
   const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0')
   const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0')
   const s = String(totalSeconds % 60).padStart(2, '0')
   return `${h}:${m}:${s}`
+}
+
+const getOffsetMinutes = (timeZone = TZ) => {
+  // Parse offsets like "GMT-05:00" into minutes (-300)
+  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset', hour12: false })
+  const tzName = fmt.formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value || 'GMT'
+  const match = tzName.match(/GMT([+-])(\d{2}):(\d{2})/)
+  if (!match) return 0
+  const sign = match[1] === '-' ? -1 : 1
+  const hours = Number(match[2])
+  const minutes = Number(match[3])
+  return sign * (hours * 60 + minutes)
+}
+
+const getTzParts = (date, timeZone = TZ) => {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour12: false,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })
+  const parts = fmt.formatToParts(date)
+  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]))
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+    second: Number(map.second),
+  }
+}
+
+const buildSlot = (utcMs, label) => {
+  const p = getTzParts(new Date(utcMs))
+  return {
+    id: `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}-${label}`,
+    time: utcMs,
+    hour: Number(p.hour),
+  }
+}
+
+const getNextSlotInfo = (now = new Date()) => {
+  const offsetMin = getOffsetMinutes()
+  const parts = getTzParts(now)
+  const baseUtcToday = Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0) - offsetMin * 60 * 1000
+
+  const slots = [
+    buildSlot(baseUtcToday - 3 * 60 * 60 * 1000, '21'), // yesterday 9pm
+    buildSlot(baseUtcToday + 9 * 60 * 60 * 1000, '09'), // today 9am
+    buildSlot(baseUtcToday + 21 * 60 * 60 * 1000, '21'), // today 9pm
+    buildSlot(baseUtcToday + (24 + 9) * 60 * 60 * 1000, '09'), // tomorrow 9am
+    buildSlot(baseUtcToday + (24 + 21) * 60 * 60 * 1000, '21'), // tomorrow 9pm
+  ]
+
+  const nowMs = now.getTime()
+  let prevSlot = null
+  let nextSlot = null
+  for (const slot of slots) {
+    if (slot.time <= nowMs && (!prevSlot || slot.time > prevSlot.time)) prevSlot = slot
+    if (slot.time > nowMs && (!nextSlot || slot.time < nextSlot.time)) nextSlot = slot
+  }
+
+  return {
+    prevSlot,
+    nextSlot,
+    remainingMs: nextSlot ? nextSlot.time - nowMs : 0,
+    nextLabel: nextSlot
+      ? nextSlot.hour === 9
+        ? '9:00 AM ET'
+        : '9:00 PM ET'
+      : '',
+  }
 }
 
 function Card({ item }) {
@@ -133,6 +212,7 @@ export default function App() {
   const [jobStatus, setJobStatus] = useState('')
   const twelveHoursMs = 12 * 60 * 60 * 1000
   const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
+  const [nextSlotLabel, setNextSlotLabel] = useState('9:00 AM / 9:00 PM ET')
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -367,22 +447,44 @@ export default function App() {
       const tick = async () => {
         if (!session?.user?.email) {
           setNextRunMs(twelveHoursMs)
+          setNextSlotLabel('9:00 AM / 9:00 PM ET')
           return
         }
-        const key = `last_run_trigger_${session.user.email}`
-        const last = Number(localStorage.getItem(key) || 0)
-        const now = Date.now()
-        const elapsed = now - last
-        const remaining = Math.max(0, twelveHoursMs - elapsed)
-        setNextRunMs(remaining)
+        const slotKey = `last_run_slot_${session.user.email}`
+        const { prevSlot, nextSlot, remainingMs, nextLabel } = getNextSlotInfo()
+        setNextRunMs(remainingMs)
+        setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
 
-        if (remaining === 0 && !triggering) {
+        // Trigger if we haven't run for the most recent slot (within a 6h grace window)
+        if (prevSlot && !triggering) {
+          const lastSlot = localStorage.getItem(slotKey)
+          const nowMs = Date.now()
+          const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
+          if (lastSlot !== prevSlot.id && withinWindow) {
+            triggering = true
+            setJobStatus('running')
+            try {
+              const runId = await triggerRemoteRun(session.user.email)
+              await pollRunStatus(runId)
+              localStorage.setItem(slotKey, prevSlot.id)
+              await fetchRuns()
+            } catch (e) {
+              setError(e?.message || 'Could not trigger scheduled run.')
+            } finally {
+              setJobStatus('')
+              triggering = false
+            }
+          }
+        }
+
+        // Safety: if no prev slot matched but we're exactly at next slot time, still trigger
+        if (!prevSlot && remainingMs <= 0 && !triggering) {
           triggering = true
           setJobStatus('running')
           try {
             const runId = await triggerRemoteRun(session.user.email)
             await pollRunStatus(runId)
-            localStorage.setItem(key, String(Date.now()))
+            if (nextSlot) localStorage.setItem(slotKey, nextSlot.id)
             await fetchRuns()
           } catch (e) {
             setError(e?.message || 'Could not trigger scheduled run.')
@@ -394,7 +496,7 @@ export default function App() {
       }
 
       tick()
-      timer = setInterval(tick, 1000)
+      timer = setInterval(tick, 15000) // update roughly every 15s
       return () => {
         if (timer) clearInterval(timer)
       }
@@ -427,7 +529,10 @@ export default function App() {
           </div>
           {jobStatus && <div className="info">Job status: {jobStatus}</div>}
           {session?.user?.email && (
-            <div className="muted">Next auto-refresh in {formatMs(nextRunMs)}</div>
+            <div className="muted">
+              Next auto-refresh (~9am/9pm ET) in {formatMs(nextRunMs)}
+              {nextSlotLabel ? ` · Upcoming slot: ${nextSlotLabel}` : ''}
+            </div>
           )}
 
           {loading && <div className="empty-state">Loading…</div>}
