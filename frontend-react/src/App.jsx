@@ -6,7 +6,9 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import HoldingsPage from './HoldingsPage'
 
 const RUN_API_BASE = import.meta.env.VITE_RUN_API_BASE || 'http://165.227.39.159:9000'
-const MCP_CLIENT_BEARER = import.meta.env.VITE_MCP_CLIENT_BEARER
+const MCP_CLIENT_BEARER =
+  import.meta.env.VITE_MCP_CLIENT_BEARER ||
+  (typeof window !== 'undefined' ? window.__MCP_CLIENT_BEARER__ : '')
 
 function Card({ item }) {
   return (
@@ -185,7 +187,11 @@ export default function App() {
   }
 
   const triggerRemoteRun = async (authedEmail) => {
-    if (!MCP_CLIENT_BEARER) throw new Error('Missing MCP client bearer (VITE_MCP_CLIENT_BEARER)')
+    if (!MCP_CLIENT_BEARER) {
+      throw new Error(
+        'Missing MCP client bearer. Set VITE_MCP_CLIENT_BEARER at build time (or window.__MCP_CLIENT_BEARER__ at runtime).'
+      )
+    }
     const url = `${RUN_API_BASE.replace(/\/$/, '')}/run`
     const res = await fetch(url, {
       method: 'POST',
