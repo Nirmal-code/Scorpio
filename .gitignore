@@ -3,7 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 
-node_modules/
+frontend-react/node_modules/
 
 # C extensions
 *.so
