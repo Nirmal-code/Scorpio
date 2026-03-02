@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from './utils/supabase'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, NavLink } from 'react-router-dom'
 import HoldingsPage from './HoldingsPage'
 
 const RUN_API_BASE = import.meta.env.VITE_RUN_API_BASE || 'http://165.227.39.159:9000'
@@ -131,8 +131,8 @@ export default function App() {
   const [userExists, setUserExists] = useState(null)
   const [userId, setUserId] = useState(null)
   const [jobStatus, setJobStatus] = useState('')
-  const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
   const twelveHoursMs = 12 * 60 * 60 * 1000
+  const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -511,18 +511,12 @@ export default function App() {
         <div className="navbar-inner">
           <div className="brand">Scorpio</div>
           <div className="nav-links">
-            <a
-              className={`nav-link ${window.location.pathname === '/summaries' ? 'active' : ''}`}
-              href="/summaries"
-            >
+            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
               Summaries
-            </a>
-            <a
-              className={`nav-link ${window.location.pathname === '/holdings' ? 'active' : ''}`}
-              href="/holdings"
-            >
+            </NavLink>
+            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
               Holdings
-            </a>
+            </NavLink>
           </div>
         </div>
       </div>
