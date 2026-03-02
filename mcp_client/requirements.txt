@@ -1,0 +1,11 @@
+requests
+httpx
+dotenv
+yfinance
+fastapi
+pipeline
+uvicorn
+openai
+supabase
+ws-api
+keyring
