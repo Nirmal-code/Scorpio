@@ -218,7 +218,17 @@ export default function App() {
         headers: { Authorization: `Bearer ${MCP_CLIENT_BEARER}` },
       })
       if (!res.ok) {
-        const text = await res.text()
+        let text = ''
+        try {
+          const json = await res.json()
+          text = json.detail || json.message || JSON.stringify(json)
+          if (String(text).toLowerCase().includes('not found')) {
+            setJobStatus('done')
+            return 'done'
+          }
+        } catch (_) {
+          text = await res.text()
+        }
         throw new Error(`Status check failed (${res.status}): ${text}`)
       }
       const data = await res.json()
