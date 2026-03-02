@@ -218,3 +218,4 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 }
 .form-actions { display: flex; gap: 10px; margin-top: 4px; }
 .success { color: #1a9c73; margin-top: 8px; }
+.info { color: #2563eb; margin: 8px 0; font-weight: 600; }

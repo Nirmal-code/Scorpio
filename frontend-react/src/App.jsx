@@ -5,6 +5,9 @@ import remarkGfm from 'remark-gfm'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import HoldingsPage from './HoldingsPage'
 
+const RUN_API_BASE = import.meta.env.VITE_RUN_API_BASE || 'http://165.227.39.159:9000'
+const MCP_CLIENT_BEARER = import.meta.env.VITE_MCP_CLIENT_BEARER
+
 function Card({ item }) {
   return (
     <article className="card">
@@ -117,6 +120,7 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [userExists, setUserExists] = useState(null)
   const [userId, setUserId] = useState(null)
+  const [jobStatus, setJobStatus] = useState('')
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -177,6 +181,69 @@ export default function App() {
       }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const triggerRemoteRun = async (authedEmail) => {
+    if (!MCP_CLIENT_BEARER) throw new Error('Missing MCP client bearer (VITE_MCP_CLIENT_BEARER)')
+    const url = `${RUN_API_BASE.replace(/\/$/, '')}/run`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${MCP_CLIENT_BEARER}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email: authedEmail }),
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Run trigger failed (${res.status}): ${text}`)
+    }
+    const data = await res.json()
+    const runId = data.id || data.run_id || data.job_id
+    if (!runId) throw new Error('Run trigger did not return an id')
+    return runId
+  }
+
+  const pollRunStatus = async (runId) => {
+    const statusUrl = `${RUN_API_BASE.replace(/\/$/, '')}/run/${runId}`
+    while (true) {
+      const res = await fetch(statusUrl, {
+        headers: { Authorization: `Bearer ${MCP_CLIENT_BEARER}` },
+      })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(`Status check failed (${res.status}): ${text}`)
+      }
+      const data = await res.json()
+      const status = data.status || data.state
+      setJobStatus(status || '')
+      if (status && status.toLowerCase() !== 'running') {
+        return status
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+    }
+  }
+
+  const handleRefreshJob = async () => {
+    setError('')
+    setJobStatus('running')
+    const authedEmail = session?.user?.email || ''
+    if (!authedEmail) {
+      setError('Please sign in with Google to fetch your history.')
+      setJobStatus('')
+      return
+    }
+    setLoading(true)
+    try {
+      const runId = await triggerRemoteRun(authedEmail)
+      await pollRunStatus(runId)
+      await fetchRuns()
+    } catch (e) {
+      setError(e?.message || 'Could not trigger run.')
+    } finally {
+      setLoading(false)
+      setJobStatus('')
     }
   }
 
@@ -291,7 +358,7 @@ export default function App() {
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
             <div className="hero-actions">
-              <button type="button" className="btn-primary compact" onClick={fetchRuns} disabled={loading}>
+              <button type="button" className="btn-primary compact" onClick={handleRefreshJob} disabled={loading}>
                 {loading ? 'Refreshing…' : 'Refresh'}
               </button>
               <button type="button" className="ghost compact" onClick={handleLogout} disabled={loading}>
@@ -305,6 +372,7 @@ export default function App() {
             <h2>Prediction history</h2>
             <span className="pill">{countLabel}</span>
           </div>
+          {jobStatus && <div className="info">Job status: {jobStatus}</div>}
 
           {loading && <div className="empty-state">Loading…</div>}
           {!loading && !hasResults && !error && (
