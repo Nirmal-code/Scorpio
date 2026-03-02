@@ -27,14 +27,8 @@ api_key = os.getenv("OPENAI_API_KEY")
 if not api_key:
     raise RuntimeError("Set OPENAI_API_KEY in your environment or .env before running mcp_client.py")
 
-email = os.getenv("EMAIL")
-if not email:
-    raise RuntimeError("Set USER_EMAIL in your environment or .env before running mcp_client.py")
 
 client = OpenAI(api_key=api_key)
-
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
-# Discord is optional; if unset we'll print to stdout
 
 # Logging setup
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -84,80 +78,6 @@ def mcp_tools_to_openai(tools):
             "parameters": params,
         })
     return openai_tools
-
-
-def format_for_discord(raw: str) -> str:
-    """
-    Convert free-form model text into Discord-friendly Markdown:
-    - Bold heading per ticker
-    - Bullet the supporting lines
-    """
-    if not raw:
-        return "(empty response)"
-
-    blocks = [b.strip() for b in raw.strip().split("\n\n") if b.strip()]
-    formatted_lines = []
-    for block in blocks:
-        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
-        if not lines:
-            continue
-        heading = lines[0].rstrip(":")
-        formatted_lines.append(f"**{heading}**")
-        for ln in lines[1:]:
-            prefix = "" if ln.startswith(("-", "•")) else "- "
-            formatted_lines.append(f"{prefix}{ln}")
-    return "\n".join(formatted_lines)
-
-
-def format_blocks_for_discord(raw: str) -> list[str]:
-    """
-    Split the model output into one message per stock block and format each nicely.
-    """
-    if not raw:
-        return ["(empty response)"]
-
-    blocks = [b.strip() for b in raw.strip().split("\n\n") if b.strip()]
-    messages = []
-    for block in blocks:
-        lines = [ln.strip() for ln in block.splitlines() if ln.strip()]
-        if not lines:
-            continue
-        heading = lines[0].rstrip(":")
-        body = []
-        for ln in lines[1:]:
-            # strip leading bullets/dashes from model output to avoid double bullets
-            cleaned = ln.lstrip("-• ").strip()
-            body.append(f"• {cleaned}")
-        msg = f"**📌 {heading}**"
-        if body:
-            msg += "\n" + "\n".join(body)
-        msg += "\n──────────────────────"
-        messages.append(msg)
-    return messages or ["(no parsed blocks)"]
-
-
-def _chunk_for_discord(text: str, limit: int = 1900):
-    """Yield chunks <= limit, trying to split on paragraph boundaries first."""
-    text = text or "(empty response)"
-    paragraphs = [p for p in text.split("\n\n") if p.strip()]
-    if not paragraphs:
-        yield text[:limit]
-        return
-    current = ""
-    for para in paragraphs:
-        candidate = (current + "\n\n" + para).strip() if current else para
-        if len(candidate) <= limit:
-            current = candidate
-        else:
-            if current:
-                yield current
-            # If single paragraph is too long, hard split it
-            while len(para) > limit:
-                yield para[:limit]
-                para = para[limit:]
-            current = para
-    if current:
-        yield current
 
 async def run_agent(user_prompt: str) -> str:
     def _flatten_exceptions(exc):
@@ -250,151 +170,69 @@ async def run_agent(user_prompt: str) -> str:
         root_causes = _flatten_exceptions(e)
         cause_msgs = "; ".join(str(c) for c in root_causes)
         raise RuntimeError(f"Failed to reach MCP server at {MCP_URL}: {cause_msgs}") from e
-    
-def _chunk_for_discord(text: str, limit: int = 1900):
-    """Yield chunks <= limit, trying to split on paragraph boundaries first."""
-    text = text or "(empty response)"
-    paragraphs = [p for p in text.split("\n\n") if p.strip()]
-    if not paragraphs:
-        yield text[:limit]
-        return
-    current = ""
-    for para in paragraphs:
-        candidate = (current + "\n\n" + para).strip() if current else para
-        if len(candidate) <= limit:
-            current = candidate
-        else:
-            if current:
-                yield current
-            # If single paragraph is too long, hard split it
-            while len(para) > limit:
-                yield para[:limit]
-                para = para[limit:]
-            current = para
-    if current:
-        yield current
 
 
-async def post_to_discord(content: str):
-    async with httpx.AsyncClient(timeout=20) as c:
-        for chunk in _chunk_for_discord(content):
-            r = await c.post(DISCORD_WEBHOOK_URL, json={"content": chunk})
-            r.raise_for_status()
+async def run_for_email(email: str) -> str:
+    prompt = f"""
+        You are my financial advisor providing educational, risk-managed portfolio guidance.
 
+        Use MCP tools to gather:
+        - Portfolio holdings and weights for user: {email}
+        - Latest available metrics for each ticker
+        - Recent ticker-specific news returned by tools
 
-async def post_blocks_to_discord(blocks: list[str]):
-    async with httpx.AsyncClient(timeout=20) as c:
-        for block in blocks:
-            # Try to keep each stock in a single message if possible
-            for chunk in _chunk_for_discord(block, limit=1900):
-                while True:
-                    r = await c.post(DISCORD_WEBHOOK_URL, json={"content": chunk})
-                    if r.status_code != 429:
-                        r.raise_for_status()
-                        break
-                    # Respect Discord rate limit hint
-                    try:
-                        retry_after = r.json().get("retry_after", 0.3)
-                    except Exception:
-                        retry_after = 0.3
-                    logger.warning("Rate limited by Discord. Retrying after %s seconds", retry_after)
-                    await asyncio.sleep(retry_after)
-        # Send a final divider message
-        divider = "────────── End of Scorpio update ──────────"
-        r = await c.post(DISCORD_WEBHOOK_URL, json={"content": divider})
-        if r.status_code == 429:
-            try:
-                retry_after = r.json().get("retry_after", 0.3)
-            except Exception:
-                retry_after = 0.3
-            logger.warning("Rate limited by Discord on divider. Retrying after %s seconds", retry_after)
-            await asyncio.sleep(retry_after)
-            r = await c.post(DISCORD_WEBHOOK_URL, json={"content": divider})
-        r.raise_for_status()
+        Use your own lookup and recent news from the last day to gather:
+        - Global volatility and macro regime indicators (see below for details)
 
+        Provide information on how each of my holdings would be impacted by different macro regimes, and actionable recommendations on how to adjust my portfolio weights accordingly. Also give better stocks/tickers to invest in at the moment.
 
-if __name__ == "__main__":
-    # Optional guard: set RUN_AGENT=0 to skip invoking the agent when importing/running this module.
-    if os.getenv("RUN_AGENT", "1") != "1":
-        logger.info("RUN_AGENT is not 1; skipping run_agent execution.")
-        raise SystemExit(0)
+        --------------------------------
+        GLOBAL VOLATILITY & MACRO REGIME ANALYSIS
 
-    try:
-        prompt = f"""
-You are my financial advisor providing educational, risk-managed portfolio guidance.
+        1. Evaluate major global risk channels that commonly drive equity volatility:
+        - Interest rates & inflation sensitivity
+        - Central bank tightening vs easing environments
+        - Energy/oil price shocks
+        - Geopolitical instability risk
+        - Credit/liquidity stress
+        - Currency strength/weakness
+        - Global growth slowdown risk
+        - Technology/growth risk sentiment
 
-Use MCP tools to gather:
-- Portfolio holdings and weights for user: {email}
-- Latest available metrics for each ticker
-- Recent ticker-specific news returned by tools
+        --------------------------------
+        PORTFOLIO OUTPUT
 
-Use your own lookup and recent news from the last day to gather:
-- Global volatility and macro regime indicators (see below for details)
+        1. Portfolio Overview
+        - Sector/theme concentration risks
+        - Exposure to macro sensitivity (growth, commodities, rates, speculative assets)
+        - Key portfolio vulnerabilities
 
-Provide information on how each of my holdings would be impacted by different macro regimes, and actionable recommendations on how to adjust my portfolio weights accordingly. Also give better stocks/tickers to invest in at the moment.
+        2. For EACH holding:
+        - Summary of latest tool-derived metrics and news
+        - Base-case outlook
+        - Key downside risks
+        - Suggested action:
+                [Add / Hold / Trim / Reduce / Exit]
+        - Position sizing guidance using percentage ranges
+                (e.g., trim 5–15%, add 5–10%)
+        - Reasoning tied to BOTH company-specific and macro-regime considerations
 
---------------------------------
-GLOBAL VOLATILITY & MACRO REGIME ANALYSIS
+        3. Portfolio-Level Actions
+        - Top risks currently facing the portfolio
+        - Opportunities created by current regime conditions
+        - 3–6 prioritized actions I should take today
 
-1. Evaluate major global risk channels that commonly drive equity volatility:
-- Interest rates & inflation sensitivity
-- Central bank tightening vs easing environments
-- Energy/oil price shocks
-- Geopolitical instability risk
-- Credit/liquidity stress
-- Currency strength/weakness
-- Global growth slowdown risk
-- Technology/growth risk sentiment
+        --------------------------------
+        RISK MANAGEMENT CONSTRAINTS
 
---------------------------------
-PORTFOLIO OUTPUT
+        - Use percentage ranges rather than exact dollar amounts unless tools provide cash balances.
+        - Never guarantee outcomes.
+        - Prefer diversification and risk-adjusted thinking over aggressive predictions.
+        - If information is missing, explicitly state uncertainty rather than guessing.
 
-1. Portfolio Overview
-- Sector/theme concentration risks
-- Exposure to macro sensitivity (growth, commodities, rates, speculative assets)
-- Key portfolio vulnerabilities
-
-2. For EACH holding:
-- Summary of latest tool-derived metrics and news
-- Base-case outlook
-- Key downside risks
-- Suggested action:
-        [Add / Hold / Trim / Reduce / Exit]
-- Position sizing guidance using percentage ranges
-        (e.g., trim 5–15%, add 5–10%)
-- Reasoning tied to BOTH company-specific and macro-regime considerations
-
-3. Portfolio-Level Actions
-- Top risks currently facing the portfolio
-- Opportunities created by current regime conditions
-- 3–6 prioritized actions I should take today
-
---------------------------------
-RISK MANAGEMENT CONSTRAINTS
-
-- Use percentage ranges rather than exact dollar amounts unless tools provide cash balances.
-- Never guarantee outcomes.
-- Prefer diversification and risk-adjusted thinking over aggressive predictions.
-- If information is missing, explicitly state uncertainty rather than guessing.
-
-Return output as a clean, structured markdown investment report. Don't include my email or a follow up prompt in the output of this.
-"""
-        result = asyncio.run(
-            run_agent(prompt)
-        )
-        formatted_blocks = format_blocks_for_discord(result)
-        asyncio.run(log_run(email, result))
-        if DISCORD_WEBHOOK_URL:
-            logger.info("Sending results to Discord webhook...")
-            asyncio.run(post_blocks_to_discord(formatted_blocks))
-        else:
-            logger.warning("No delivery channel configured; printing to stdout.")
-            print("\n\n".join(formatted_blocks))
-    except Exception as e:
-        # Also notify failures to Discord if you want:
-        try:
-            if DISCORD_WEBHOOK_URL:
-                asyncio.run(post_to_discord(f"Scorpio job failed: {e}"))
-        except Exception:
-            pass
-        raise SystemExit(1)
+        Return output as a clean, structured markdown investment report. Don't include my email or a follow up prompt in the output of this.
+        """
+    result = await run_agent(prompt)
+    # store + deliver (optional)
+    await log_run(email, result)
+    return result
