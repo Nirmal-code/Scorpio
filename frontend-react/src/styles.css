@@ -175,3 +175,19 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 }
 .btn-primary.full { width: 100%; justify-content: center; }
 .notice { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-weight: 600; }
+.field input {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: #f9fbff;
+}
+.form-actions { display: flex; gap: 10px; margin-top: 4px; }
+.success { color: #1a9c73; margin-top: 8px; }

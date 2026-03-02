@@ -2,14 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { supabase } from './utils/supabase'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import {
-  BrowserRouter,
-  Routes,
-  Route,
-  Navigate,
-  useLocation,
-  useNavigate,
-} from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
+import HoldingsPage from './HoldingsPage'
 
 function Card({ item }) {
   return (
@@ -122,6 +116,7 @@ export default function App() {
 
   const [session, setSession] = useState(null)
   const [userExists, setUserExists] = useState(null)
+  const [userId, setUserId] = useState(null)
 
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
@@ -148,14 +143,14 @@ export default function App() {
         throw new Error('No user found for that email')
       }
       setUserExists(true)
+      setUserId(userRow.id)
 
-      const userId = userRow.id
       const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
       const { data: runs, error: runsErr } = await supabase
         .from('runs')
         .select('summary, created_at')
-        .eq('user_id', userId)
+        .eq('user_id', userRow.id)
         .gte('created_at', sinceIso)
         .order('created_at', { ascending: false })
         .limit(200)
@@ -352,6 +347,27 @@ export default function App() {
         <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/summaries" element={<SummariesPage />} />
+        <Route
+          path="/holdings"
+          element={
+            !authChecked ? (
+              <main className="page">
+                <div className="empty-state">Checking session…</div>
+              </main>
+            ) : session && userExists !== false ? (
+              <HoldingsPage
+                session={session}
+                onNoUser={async () => {
+                  await supabase.auth.signOut()
+                  setSession(null)
+                  setUserExists(false)
+                }}
+              />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
         <Route
           path="/auth/callback"
           element={
