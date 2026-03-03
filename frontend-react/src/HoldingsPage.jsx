@@ -111,12 +111,23 @@ export default function HoldingsPage({ session, onNoUser }) {
 
   const onEdit = (h) => {
     setForm({
-      ticker: h.ticker || '',
+      ticker: (h.ticker || '').toUpperCase(),
       quantity: h.quantity ?? '',
       avg_cost: h.avg_cost ?? '',
       market_value: h.market_value ?? '',
       book_value: h.book_value ?? '',
     })
+    // Scroll the user back to the form for quick editing
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const formatVal = (val, money = false) => {
+    if (val === null || val === undefined || val === '') return ''
+    const num = Number(val)
+    if (Number.isNaN(num)) return val
+    return money
+      ? num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : num.toLocaleString('en-US', { maximumFractionDigits: 4 })
   }
 
   const onDelete = async (ticker) => {
@@ -221,38 +232,48 @@ export default function HoldingsPage({ session, onNoUser }) {
       )}
 
       {!resolvingUser && (
-        <section className="panel">
+        <section className="panel holdings-panel">
           <div className="results-head">
-            <h2>Current holdings</h2>
+            <div>
+              <h2>Current holdings</h2>
+              <p className="muted small">Formatted for quick, textbook-style review.</p>
+            </div>
             <span className="pill">{holdings.length}</span>
           </div>
+
           {holdings.length === 0 && <div className="empty-state">No holdings yet.</div>}
+
           {holdings.length > 0 && (
             <div className="table-wrap">
-              <table className="table">
+              <table className="table tidy-table">
                 <thead>
                   <tr>
                     <th>Ticker</th>
-                    <th>Qty</th>
-                    <th>Avg Cost</th>
-                    <th>Market Value</th>
-                    <th>Book Value</th>
+                    <th className="num">Qty</th>
+                    <th className="num">Avg Cost</th>
+                    <th className="num">Market Value</th>
+                    <th className="num">Book Value</th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {holdings.map((h) => (
                     <tr key={h.ticker}>
-                      <td>{h.ticker}</td>
-                      <td>{h.quantity ?? ''}</td>
-                      <td>{h.avg_cost ?? ''}</td>
-                      <td>{h.market_value ?? ''}</td>
-                      <td>{h.book_value ?? ''}</td>
+                      <td className="ticker-cell">{(h.ticker || '').toUpperCase()}</td>
+                      <td className="num">{formatVal(h.quantity)}</td>
+                      <td className="num">{formatVal(h.avg_cost, true)}</td>
+                      <td className="num">{formatVal(h.market_value, true)}</td>
+                      <td className="num">{formatVal(h.book_value, true)}</td>
                       <td className="actions">
                         <button type="button" className="ghost compact" onClick={() => onEdit(h)} disabled={loading}>
                           Edit
                         </button>
-                        <button type="button" className="ghost danger compact" onClick={() => onDelete(h.ticker)} disabled={loading}>
+                        <button
+                          type="button"
+                          className="ghost danger compact"
+                          onClick={() => onDelete(h.ticker)}
+                          disabled={loading}
+                        >
                           Delete
                         </button>
                       </td>

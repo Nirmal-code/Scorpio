@@ -268,9 +268,12 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 
 .table-wrap { width: 100%; overflow-x: auto; margin-top: 12px; }
 .table { width: 100%; border-collapse: collapse; }
-.table th, .table td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+.table th, .table td { border: 1px solid var(--border); padding: 10px 12px; text-align: left; }
 .table thead { background: var(--pill); }
 .table tr:nth-child(even) { background: #f6f8fd; }
 
 .actions { display: flex; gap: 6px; }
 .ghost.danger { border-color: #f87171; color: #f87171; }
+.tidy-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tidy-table .ticker-cell { font-weight: 700; letter-spacing: 0.5px; }
+.holdings-panel .muted.small { margin-top: 2px; }
