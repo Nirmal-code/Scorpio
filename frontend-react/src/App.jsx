@@ -433,6 +433,14 @@ export default function App() {
 
   function SummariesPage() {
     const email = session?.user?.email
+    const timelineRef = useRef(null)
+
+    const scrollTimeline = (direction = 1) => {
+      const el = timelineRef.current
+      if (!el) return
+      const amount = Math.max(280, Math.min(520, el.clientWidth * 0.7))
+      el.scrollBy({ left: direction * amount, behavior: 'smooth' })
+    }
 
     // Stable auto-run timer: only depends on email/userId, not on changing slot state.
     useEffect(() => {
@@ -524,10 +532,30 @@ export default function App() {
           {error && <p className="error">{error}</p>}
 
           {hasResults && (
-            <div className="timeline">
-              {items.map((item, idx) => (
-                <Card key={`run-${idx}`} item={item} />
-              ))}
+            <div className="timeline-wrap">
+              <button
+                type="button"
+                className="scroll-btn left"
+                aria-label="Scroll left"
+                onClick={() => scrollTimeline(-1)}
+              >
+                ‹
+              </button>
+
+              <div className="timeline-row" ref={timelineRef}>
+                {items.map((item, idx) => (
+                  <Card key={`run-${idx}`} item={item} />
+                ))}
+              </div>
+
+              <button
+                type="button"
+                className="scroll-btn right"
+                aria-label="Scroll right"
+                onClick={() => scrollTimeline(1)}
+              >
+                ›
+              </button>
             </div>
           )}
         </section>
