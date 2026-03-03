@@ -579,14 +579,16 @@ export default function App() {
         <div className="navbar-inner">
           <div className="brand">Scorpio</div>
 
-          <div className="nav-links">
-            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
-              Summaries
-            </NavLink>
-            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
-              Holdings
-            </NavLink>
-          </div>
+          {session ? (
+            <div className="nav-links">
+              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
+                Summaries
+              </NavLink>
+              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
+                Holdings
+              </NavLink>
+            </div>
+          ): null}
 
           {session ? (
             <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
