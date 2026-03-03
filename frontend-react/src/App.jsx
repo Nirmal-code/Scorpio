@@ -518,11 +518,6 @@ export default function App() {
             <h1>Run summaries</h1>
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
-          <div className="hero-actions">
-            <button type="button" className="ghost compact" onClick={handleLogout}>
-              Sign out
-            </button>
-          </div>
         </header>
 
         <section className="panel" id="results">
