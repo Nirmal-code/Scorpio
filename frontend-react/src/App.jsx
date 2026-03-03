@@ -332,6 +332,7 @@ export default function App() {
   }
 
   const handleLogout = async () => {
+    console.log('Logging out')
     try {
       setLoading(true)
       await supabase.auth.signOut()
