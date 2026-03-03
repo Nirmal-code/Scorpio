@@ -219,9 +219,12 @@ export default function App() {
     if (selectErr) throw selectErr
     if (existing?.id) return existing.id
 
+    // Generate a reasonably unique bigint-like id (ms + random) for new users.
+    const generatedId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
+
     const { data: created, error: upsertErr } = await supabase
       .from('users')
-      .upsert({ wealthsimple_email: email, id: crypto.randomInt() })
+      .upsert({ id: generatedId.toString(), wealthsimple_email: email }, { onConflict: 'wealthsimple_email' })
       .select('id')
       .maybeSingle()
 
@@ -257,7 +260,7 @@ export default function App() {
       const { data: runs, error: runsErr } = await supabase
         .from('runs')
         .select('summary, created_at')
-        .eq('user_id', ensuredUser.id)
+        .eq('user_id', ensuredUserId)
         .gte('created_at', sinceIso)
         .order('created_at', { ascending: false })
         .limit(200)
