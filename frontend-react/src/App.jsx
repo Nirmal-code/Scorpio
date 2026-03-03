@@ -207,29 +207,50 @@ export default function App() {
   const jobStatusRef = useRef('')
 
   // Ensure a public "users" row exists for the signed-in email (creates on first sign-up).
+  // Uses an in-memory per-email promise to avoid duplicate inserts when multiple calls happen at once.
+  const ensureUserPromisesRef = useRef({})
   const ensureUserRow = async (email) => {
     if (!email) return null
+    if (ensureUserPromisesRef.current[email]) return ensureUserPromisesRef.current[email]
 
-    const { data: existing, error: selectErr } = await supabase
-      .from('users')
-      .select('id')
-      .eq('wealthsimple_email', email)
-      .maybeSingle()
+    const promise = (async () => {
+      const { data: existing, error: selectErr } = await supabase
+        .from('users')
+        .select('id')
+        .eq('wealthsimple_email', email)
+        .maybeSingle()
 
-    if (selectErr) throw selectErr
-    if (existing?.id) return existing.id
+      if (selectErr) throw selectErr
+      if (existing?.id) return existing.id
 
-    // Generate a reasonably unique bigint-like id (ms + random) for new users.
-    const generatedId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
+      // Generate a reasonably unique bigint-like id (ms + random) for new users.
+      const generatedId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
 
-    const { data: created, error: upsertErr } = await supabase
-      .from('users')
-      .upsert({ id: generatedId.toString(), wealthsimple_email: email })
-      .select('id')
-      .maybeSingle()
+      const { data: created, error: insertErr } = await supabase
+        .from('users')
+        .insert({ id: generatedId.toString(), wealthsimple_email: email })
+        .select('id')
+        .maybeSingle()
 
-    if (upsertErr) throw upsertErr
-    return created?.id ?? null
+      if (insertErr) {
+        // Likely a race: someone else inserted first. Fetch the row and return its id.
+        const { data: fetched, error: refetchErr } = await supabase
+          .from('users')
+          .select('id')
+          .eq('wealthsimple_email', email)
+          .maybeSingle()
+        if (refetchErr) throw refetchErr
+        return fetched?.id ?? null
+      }
+
+      return created?.id ?? null
+    })()
+
+    ensureUserPromisesRef.current[email] = promise
+    promise.finally(() => {
+      delete ensureUserPromisesRef.current[email]
+    })
+    return promise
   }
 
   const hasResults = items && items.length > 0
