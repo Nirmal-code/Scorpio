@@ -412,20 +412,37 @@ export default function App() {
 
   function LoginPage() {
     return (
-      <main className="page auth-container">
-        <div className="auth-hero">
+      <main className="page auth-container single">
+        <div className="panel auth-panel auth-single">
           <p className="eyebrow">Scorpio · portfolio intelligence</p>
-          <h1>Enter the den.</h1>
-          <p className="sub">Sign in with Google to continue.</p>
-          <div className="glow"></div>
-        </div>
-        <div className="panel auth-panel">
-          <h2>Sign in</h2>
+          <h1>Sign in to Scorpio</h1>
+          <p className="sub">Continue with Google to view your portfolio summaries.</p>
           <button type="button" className="btn-primary full" onClick={handleGoogleLogin} disabled={authBusy}>
+            <span className="google-icon" aria-hidden="true">
+              <svg viewBox="0 0 48 48" focusable="false">
+                <path
+                  fill="#EA4335"
+                  d="M24 9.5c3.54 0 6.72 1.22 9.22 3.6l6.86-6.86C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.55 13.22l8 6.22C12.57 12.62 17.83 9.5 24 9.5z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M46.14 24.55c0-1.64-.15-3.21-.43-4.73H24v9h12.55c-.54 2.9-2.18 5.36-4.64 7.03l7.39 5.72c4.31-3.98 6.84-9.86 6.84-16.99z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M10.55 28.05c-.48-1.4-.76-2.9-.76-4.44s.28-3.04.76-4.44l-8-6.22C1.07 15.7 0 19.22 0 23c0 3.78 1.07 7.3 2.55 9.99l8-6.22z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M24 48c6.48 0 11.9-2.13 15.87-5.78l-7.39-5.72c-2.06 1.38-4.7 2.2-8.48 2.2-6.17 0-11.43-3.12-13.87-9.27l-8 6.22C6.51 42.62 14.62 48 24 48z"
+                />
+                <path fill="none" d="M0 0h48v48H0z" />
+              </svg>
+            </span>
             {authBusy ? 'Opening Google…' : 'Continue with Google'}
           </button>
+          <p className="hint">Google sign-in only · secure via Supabase Auth.</p>
           {error && <p className="error">{error}</p>}
-          <p className="notice">Private access only.</p>
         </div>
       </main>
     )
