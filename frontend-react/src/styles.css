@@ -184,51 +184,7 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 .pill.tone-bullish { color: #79f2c0; }
 .pill.tone-bearish { color: #ff9b9b; }
 
-.timeline-wrap {
-  position: relative;
-  margin-top: 14px;
-}
-
-.timeline-row {
-  display: flex;
-  gap: 14px;
-  overflow-x: auto;
-  padding: 6px 8px 12px;
-  scroll-snap-type: x mandatory;
-  scroll-padding: 8px;
-}
-
-.timeline-row::-webkit-scrollbar {
-  height: 10px;
-}
-.timeline-row::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 999px;
-}
-
-.scroll-btn {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 2;
-  width: 36px;
-  height: 36px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: #fff;
-  color: var(--text);
-  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0.9;
-  transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
-}
-.scroll-btn:hover { opacity: 1; box-shadow: 0 10px 26px rgba(0,0,0,0.12); }
-.scroll-btn:active { transform: translateY(-50%) scale(0.97); }
-.scroll-btn.left { left: -6px; }
-.scroll-btn.right { right: -6px; }
+.timeline { display: grid; gap: 12px; margin-top: 14px; }
 .empty-state { color: var(--muted); }
 
 .card {
@@ -236,10 +192,6 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
-  min-width: 280px;
-  max-width: 360px;
-  flex: 0 0 320px;
-  scroll-snap-align: start;
 }
 
 .card .date-top { color: var(--muted); font-size: 0.9rem; margin: 0 0 4px; }
