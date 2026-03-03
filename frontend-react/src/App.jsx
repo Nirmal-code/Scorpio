@@ -76,11 +76,11 @@ const getNextSlotInfo = (now = new Date()) => {
   const baseUtcToday = Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0) - offsetMin * 60 * 1000
 
   const slots = [
-    buildSlot(baseUtcToday - 3 * 60 * 60 * 1000, '21'), // yesterday 9pm
-    buildSlot(baseUtcToday + 9 * 60 * 60 * 1000, '09'), // today 9am
-    buildSlot(baseUtcToday + 21 * 60 * 60 * 1000, '21'), // today 9pm
-    buildSlot(baseUtcToday + (24 + 9) * 60 * 60 * 1000, '09'), // tomorrow 9am
-    buildSlot(baseUtcToday + (24 + 21) * 60 * 60 * 1000, '21'), // tomorrow 9pm
+    buildSlot(baseUtcToday - 3 * 60 * 60 * 1000, '21'),
+    buildSlot(baseUtcToday + 9 * 60 * 60 * 1000, '09'),
+    buildSlot(baseUtcToday + 21 * 60 * 60 * 1000, '21'),
+    buildSlot(baseUtcToday + (24 + 9) * 60 * 60 * 1000, '09'),
+    buildSlot(baseUtcToday + (24 + 21) * 60 * 60 * 1000, '21'),
   ]
 
   const nowMs = now.getTime()
@@ -106,7 +106,7 @@ function Card({ item }) {
         <div>
           <p className="meta date-top">{item.date || ''}</p>
           <p className="ticker">{item.ticker || '—'}</p>
-          <h3>{item.title || 'Recommendation'}</h3>
+          <h3>{item.title || 'Run summary'}</h3>
         </div>
         <span className={`pill tone-${(item.tone || 'neutral').toLowerCase()}`}>
           {(item.tone || 'neutral').toUpperCase()}
@@ -118,170 +118,194 @@ function Card({ item }) {
         </div>
       )}
       <footer>
-        <span className="meta">{item.source || 'model'}</span>
+        <span className="meta">{item.source || 'runs'}</span>
       </footer>
     </article>
   )
 }
 
-function AuthCallbackPage({ setError, setAuthBusy, setSession, setAuthChecked }) {
+function AuthCallbackPage() {
   const navigate = useNavigate()
   const location = useLocation()
+  const [error, setError] = useState('')
 
   useEffect(() => {
     let cancelled = false
-
-    const completeAuth = async () => {
+    const run = async () => {
       try {
         setError('')
-        setAuthBusy(true)
-
         const params = new URLSearchParams(location.search)
-        const code = params.get('code')
         const err = params.get('error_description') || params.get('error')
         if (err) throw new Error(err)
 
+        const code = params.get('code')
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code)
-          if (error) throw error
+          const { error: exErr } = await supabase.auth.exchangeCodeForSession(code)
+          if (exErr) throw exErr
         }
 
-        const { data, error } = await supabase.auth.getSession()
-        if (error) throw error
-
-        const newSession = data?.session ?? null
-        if (!newSession) {
-          throw new Error('Login completed but no session was created. Check Supabase Auth settings + redirect URLs.')
-        }
-
-        if (!cancelled) {
-          setSession(newSession)
-          setAuthChecked(true)
-          navigate('/summaries', { replace: true })
-        }
+        // session is now stored; just navigate
+        if (!cancelled) navigate('/summaries', { replace: true })
       } catch (e) {
         if (!cancelled) {
           setError(e?.message || 'Could not complete sign-in.')
-          setAuthChecked(true)
           navigate('/login', { replace: true })
         }
-      } finally {
-        if (!cancelled) setAuthBusy(false)
       }
     }
-
-    completeAuth()
+    run()
     return () => {
       cancelled = true
     }
-  }, [location.search, navigate, setAuthBusy, setError, setSession, setAuthChecked])
+  }, [location.search, navigate])
 
   return (
     <main className="page auth-container">
       <div className="panel auth-panel">
         <h1>Signing you in…</h1>
         <p className="sub">Completing Google sign-in.</p>
+        {error && <p className="error">{error}</p>}
       </div>
     </main>
   )
 }
 
-export default function App() {
-  const [items, setItems] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+function RequireAuth({ session, authChecked, children }) {
+  const location = useLocation()
+  if (!authChecked) {
+    return (
+      <main className="page">
+        <div className="empty-state">Checking session…</div>
+      </main>
+    )
+  }
+  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  return children
+}
 
+export default function App() {
+  const [session, setSession] = useState(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [authBusy, setAuthBusy] = useState(false)
 
-  const [session, setSession] = useState(null)
-  const [userExists, setUserExists] = useState(null)
+  const [error, setError] = useState('')
+  const [items, setItems] = useState([])
+  const [refreshing, setRefreshing] = useState(false)
+
+  // App-level user id (from your public `users` table)
   const [userId, setUserId] = useState(null)
 
+  // auto-run countdown state
   const [jobStatus, setJobStatus] = useState('')
   const twelveHoursMs = 12 * 60 * 60 * 1000
   const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
   const [nextSlotLabel, setNextSlotLabel] = useState('9:00 AM / 9:00 PM ET')
-  const [lastTriggeredSlot, setLastTriggeredSlot] = useState(null)
   const lastTriggeredRef = useRef(null)
   const jobStatusRef = useRef('')
 
-  // Ensure a public "users" row exists for the signed-in email (creates on first sign-up).
-  // Uses an in-memory per-email promise to avoid duplicate inserts when multiple calls happen at once.
-  const ensureUserPromisesRef = useRef({})
-  const ensureUserRow = async (email) => {
-    if (!email) return null
-    if (ensureUserPromisesRef.current[email]) return ensureUserPromisesRef.current[email]
+  const hasResults = items.length > 0
+  const countLabel = useMemo(() => (hasResults ? items.length : 0), [hasResults, items.length])
 
-    const promise = (async () => {
-      const { data: existing, error: selectErr } = await supabase
-        .from('users')
-        .select('id')
-        .eq('wealthsimple_email', email)
-        .maybeSingle()
+  // ---- Auth bootstrap (THIS is what prevents "logged out on refresh") ----
+  useEffect(() => {
+    let mounted = true
 
-      if (selectErr) throw selectErr
-      if (existing?.id) return existing.id
-
-      // Generate a reasonably unique bigint-like id (ms + random) for new users.
-      const generatedId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
-
-      const { data: created, error: insertErr } = await supabase
-        .from('users')
-        .insert({ id: generatedId.toString(), wealthsimple_email: email })
-        .select('id')
-        .maybeSingle()
-
-      if (insertErr) {
-        // Likely a race: someone else inserted first. Fetch the row and return its id.
-        const { data: fetched, error: refetchErr } = await supabase
-          .from('users')
-          .select('id')
-          .eq('wealthsimple_email', email)
-          .maybeSingle()
-        if (refetchErr) throw refetchErr
-        return fetched?.id ?? null
+    const init = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (!mounted) return
+        if (error) setError(error.message)
+        setSession(data?.session ?? null)
+      } catch (e) {
+        if (mounted) setError(e?.message || 'Could not check session')
+      } finally {
+        if (mounted) setAuthChecked(true)
       }
-
-      return created?.id ?? null
-    })()
-
-    ensureUserPromisesRef.current[email] = promise
-    promise.finally(() => {
-      delete ensureUserPromisesRef.current[email]
-    })
-    return promise
-  }
-
-  const hasResults = items && items.length > 0
-  const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
-
-  const fetchRuns = async () => {
-    setError('')
-    const authedEmail = session?.user?.email || ''
-    if (!authedEmail) {
-      setError('Please sign in with Google to fetch your history.')
-      return
     }
 
-    setLoading(true)
-    try {
-      const ensuredUserId = await ensureUserRow(authedEmail)
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      if (!mounted) return
+      setSession(newSession ?? null)
+    })
 
-      if (!ensuredUserId) {
-        setUserExists(false)
-        throw new Error('No user found for that email')
+    init()
+    return () => {
+      mounted = false
+      listener?.subscription?.unsubscribe()
+    }
+  }, [])
+
+  // ---- Public users table: find or create your row (NEVER logs you out) ----
+  const ensureUserRow = async (email) => {
+    if (!email) return null
+
+    // 1) try read
+    const { data: existing, error: selErr } = await supabase
+      .from('users')
+      .select('id')
+      .eq('wealthsimple_email', email)
+      .maybeSingle()
+
+    if (selErr) throw selErr
+    if (existing?.id) return existing.id
+
+    // 2) create
+    const generatedId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
+    const { data: created, error: insErr } = await supabase
+      .from('users')
+      .insert({ id: generatedId.toString(), wealthsimple_email: email })
+      .select('id')
+      .maybeSingle()
+
+    if (!insErr && created?.id) return created.id
+
+    // 3) if insert raced, re-read
+    const { data: reread, error: rrErr } = await supabase
+      .from('users')
+      .select('id')
+      .eq('wealthsimple_email', email)
+      .maybeSingle()
+    if (rrErr) throw rrErr
+    return reread?.id ?? null
+  }
+
+  // When session changes, set userId + load runs
+  useEffect(() => {
+    let cancelled = false
+
+    const run = async () => {
+      setError('')
+      setItems([])
+      setUserId(null)
+      lastTriggeredRef.current = null
+
+      const email = session?.user?.email
+      if (!email) return
+
+      try {
+        const uid = await ensureUserRow(email)
+        if (!cancelled) setUserId(uid)
+      } catch (e) {
+        if (!cancelled) setError(e?.message || 'Could not load user.')
       }
+    }
 
-      setUserExists(true)
-      setUserId(ensuredUserId)
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [session?.user?.email])
 
+  const fetchRuns = async (uid) => {
+    if (!uid) return
+    setError('')
+    setRefreshing(true)
+    try {
       const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-
       const { data: runs, error: runsErr } = await supabase
         .from('runs')
         .select('summary, created_at')
-        .eq('user_id', ensuredUserId)
+        .eq('user_id', uid)
         .gte('created_at', sinceIso)
         .order('created_at', { ascending: false })
         .limit(200)
@@ -297,92 +321,25 @@ export default function App() {
         source: 'runs',
         tone: 'neutral',
       }))
-
       setItems(mapped)
     } catch (e) {
+      // IMPORTANT: do NOT sign out on errors
       setError(e?.message || 'Could not fetch history.')
-      setItems([])
-      if (e?.message?.includes('No user found')) {
-        await supabase.auth.signOut()
-        setSession(null)
-      }
     } finally {
-      setLoading(false)
+      setRefreshing(false)
     }
   }
 
-  const triggerRemoteRun = async (authedEmail) => {
-    if (!MCP_CLIENT_BEARER) {
-      throw new Error(
-        'Missing MCP client bearer. Set VITE_MCP_CLIENT_BEARER at build time (or window.__MCP_CLIENT_BEARER__ at runtime).'
-      )
-    }
-    const url = `${RUN_API_BASE.replace(/\/$/, '')}/run`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${MCP_CLIENT_BEARER}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email: authedEmail }),
-    })
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Run trigger failed (${res.status}): ${text}`)
-    }
-    const data = await res.json()
-    const runId = data.id || data.run_id || data.job_id
-    if (!runId) throw new Error('Run trigger did not return an id')
-    return runId
-  }
-
-  const pollRunStatus = async (runId) => {
-    const statusUrl = `${RUN_API_BASE.replace(/\/$/, '')}/run/${runId}`
-    while (true) {
-      const res = await fetch(statusUrl, {
-        headers: { Authorization: `Bearer ${MCP_CLIENT_BEARER}` },
-      })
-      if (!res.ok) {
-        let text = ''
-        try {
-          const json = await res.json()
-          text = json.detail || json.message || JSON.stringify(json)
-          if (String(text).toLowerCase().includes('not found')) {
-            setJobStatus('done')
-            return 'done'
-          }
-        } catch (_) {
-          text = await res.text()
-        }
-        throw new Error(`Status check failed (${res.status}): ${text}`)
-      }
-      const data = await res.json()
-      const status = data.status || data.state
-      setJobStatus(status || '')
-      jobStatusRef.current = status || ''
-      if (status && status.toLowerCase() !== 'running') return status
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-    }
-  }
-
-  const handleLogout = async () => {
-    console.log('Logging out')
-    try {
-      setLoading(true)
-      await supabase.auth.signOut()
-      setItems([])
-      setSession(null)
-    } finally {
-      setLoading(false)
-    }
-  }
+  useEffect(() => {
+    if (userId) fetchRuns(userId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId])
 
   const handleGoogleLogin = async () => {
     try {
       setError('')
       setAuthBusy(true)
       const redirectTo = `${window.location.origin}/auth/callback`
-
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: { redirectTo },
@@ -394,187 +351,101 @@ export default function App() {
     }
   }
 
-  const handleGoogleSignup = async () => {
-    try {
-      setError('')
-      setAuthBusy(true)
-      localStorage.setItem('signup_intent', '1')
-      const redirectTo = `${window.location.origin}/auth/callback`
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: { redirectTo },
-      })
-      
-      if (error) throw error
-    } catch (e) {
-      setError(e?.message || 'Could not start Google sign-up.')
-      setAuthBusy(false)
+  const handleLogout = async () => {
+    setError('')
+    await supabase.auth.signOut()
+    // state will clear via onAuthStateChange
+  }
+
+  const triggerRemoteRun = async (email) => {
+    if (!MCP_CLIENT_BEARER) {
+      throw new Error('Missing MCP bearer (VITE_MCP_CLIENT_BEARER).')
+    }
+    const url = `${RUN_API_BASE.replace(/\/$/, '')}/run`
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${MCP_CLIENT_BEARER}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) throw new Error(`Run trigger failed (${res.status}): ${await res.text()}`)
+    const data = await res.json()
+    return data.id || data.run_id || data.job_id
+  }
+
+  const pollRunStatus = async (runId) => {
+    const statusUrl = `${RUN_API_BASE.replace(/\/$/, '')}/run/${runId}`
+    while (true) {
+      const res = await fetch(statusUrl, { headers: { Authorization: `Bearer ${MCP_CLIENT_BEARER}` } })
+      if (!res.ok) throw new Error(`Status check failed (${res.status}): ${await res.text()}`)
+      const data = await res.json()
+      const status = data.status || data.state || ''
+      setJobStatus(status)
+      jobStatusRef.current = status
+      if (status && status.toLowerCase() !== 'running') return status
+      await new Promise((r) => setTimeout(r, 2000))
     }
   }
 
-  useEffect(() => {
-    let mounted = true
-
-    const init = async () => {
-      try {
-        const { data, error } = await supabase.auth.getSession()
-        if (!mounted) return
-        if (error) setError(error.message)
-        const sess = data?.session ?? null
-        setSession(sess)
-        setUserExists(null)
-        if (sess?.user?.email) {
-          await ensureUserRow(sess.user.email)
-        }
-      } catch (e) {
-        if (mounted) setError(e?.message || 'Could not check session')
-      } finally {
-        if (mounted) setAuthChecked(true)
-      }
-    }
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      if (!mounted) return
-      setSession(newSession ?? null)
-      setUserExists(null)
-      if (newSession?.user?.email) {
-        try {
-          await ensureUserRow(newSession.user.email)
-        } catch (e) {
-          setError(e?.message || 'Could not create user row')
-        }
-      }
-    })
-
-    init()
-    return () => {
-      mounted = false
-      listener?.subscription?.unsubscribe()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (session?.user?.email) fetchRuns()
-    else {
-      setItems([])
-      setUserExists(null)
-      setLastTriggeredSlot(null)
-      lastTriggeredRef.current = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.user?.email])
-
-  useEffect(() => {
-    if (!session?.user?.email) {
-      setLastTriggeredSlot(null)
-      lastTriggeredRef.current = null
-      return
-    }
-
-    // If the user just signed up, create their row immediately.
-    const signupIntent = localStorage.getItem('signup_intent')
-    if (signupIntent === '1') {
-      ensureUserRow(session.user.email)
-        .then(() => {
-          localStorage.removeItem('signup_intent')
-        })
-        .catch(() => {
-          // swallow; fetchRuns will surface errors if needed
-        })
-    }
-
-    const slotKey = `last_run_slot_${session.user.email}`
-    const stored = localStorage.getItem(slotKey)
-    if (stored) setLastTriggeredSlot(stored)
-    if (stored) lastTriggeredRef.current = stored
-  }, [session?.user?.email])
-
-  const LoginPage = () => (
-    <main className="page auth-container">
-      <div className="auth-hero">
-        <p className="eyebrow">Scorpio · portfolio intelligence</p>
-        <h1>Enter the den.</h1>
-        <p className="sub">Your AI-generated run summaries, all in one place. Sign in with Google to continue.</p>
-        <div className="glow"></div>
-      </div>
-      <div className="panel auth-panel">
-        <h2>Welcome back</h2>
-        <p className="muted small">Use your Google account to access your portfolio summaries.</p>
-        <div className="auth-actions">
+  function LoginPage() {
+    return (
+      <main className="page auth-container">
+        <div className="auth-hero">
+          <p className="eyebrow">Scorpio · portfolio intelligence</p>
+          <h1>Enter the den.</h1>
+          <p className="sub">Sign in with Google to continue.</p>
+          <div className="glow"></div>
+        </div>
+        <div className="panel auth-panel">
+          <h2>Sign in</h2>
           <button type="button" className="btn-primary full" onClick={handleGoogleLogin} disabled={authBusy}>
             {authBusy ? 'Opening Google…' : 'Continue with Google'}
           </button>
-          <button type="button" className="ghost full" onClick={handleGoogleSignup} disabled={authBusy}>
-            {authBusy ? 'Opening Google…' : 'Sign up with Google'}
-          </button>
+          {error && <p className="error">{error}</p>}
+          <p className="notice">Private access only.</p>
         </div>
-        {error && <p className="error">{error}</p>}
-        <p className="notice">Private access only. Outside users are not permitted.</p>
-      </div>
-    </main>
-  )
+      </main>
+    )
+  }
 
-  const SummariesPage = () => {
-    if (!session) return <Navigate to="/login" replace />
-    if (userExists === false) return <Navigate to="/login" replace />
+  function SummariesPage() {
+    const email = session?.user?.email
 
+    // Auto-trigger job at 9am/9pm ET with a stable interval (does not depend on changing state)
     useEffect(() => {
-      let timer
+      if (!email) return
+
+      const slotKey = `last_run_slot_${email}`
+      lastTriggeredRef.current = localStorage.getItem(slotKey)
+
+      let timer = null
       let triggering = false
 
       const tick = async () => {
-        if (!session?.user?.email || userExists === false) {
-          setNextRunMs(twelveHoursMs)
-          setNextSlotLabel('9:00 AM / 9:00 PM ET')
-          setLastTriggeredSlot(null)
-          lastTriggeredRef.current = null
-          return
-        }
-
-        const slotKey = `last_run_slot_${session.user.email}`
-        const storedLast = localStorage.getItem(slotKey)
-        const lastId = lastTriggeredRef.current || lastTriggeredSlot || storedLast || null
-        const { prevSlot, nextSlot, remainingMs, nextLabel } = getNextSlotInfo()
+        const { prevSlot, remainingMs, nextLabel } = getNextSlotInfo()
         setNextRunMs(remainingMs)
         setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
 
-        if (prevSlot && !triggering && jobStatusRef.current !== 'running') {
-          const nowMs = Date.now()
-          const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
-          if (lastId !== prevSlot.id && withinWindow) {
-            triggering = true
-            setJobStatus('running')
-            jobStatusRef.current = 'running'
-            try {
-              const runId = await triggerRemoteRun(session.user.email)
-              await pollRunStatus(runId)
-              localStorage.setItem(slotKey, prevSlot.id)
-              setLastTriggeredSlot(prevSlot.id)
-              lastTriggeredRef.current = prevSlot.id
-              await fetchRuns()
-            } catch (e) {
-              setError(e?.message || 'Could not trigger scheduled run.')
-            } finally {
-              setJobStatus('')
-              jobStatusRef.current = ''
-              triggering = false
-            }
-          }
-        }
+        if (!prevSlot) return
+        if (triggering) return
+        if ((jobStatusRef.current || '').toLowerCase() === 'running') return
 
-        if (!prevSlot && remainingMs <= 0 && !triggering && jobStatusRef.current !== 'running') {
+        const lastId = lastTriggeredRef.current || localStorage.getItem(slotKey)
+        const nowMs = Date.now()
+        const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
+
+        if (withinWindow && lastId !== prevSlot.id) {
           triggering = true
           setJobStatus('running')
           jobStatusRef.current = 'running'
           try {
-            const runId = await triggerRemoteRun(session.user.email)
+            const runId = await triggerRemoteRun(email)
             await pollRunStatus(runId)
-            if (nextSlot) {
-              localStorage.setItem(slotKey, nextSlot.id)
-              setLastTriggeredSlot(nextSlot.id)
-              lastTriggeredRef.current = nextSlot.id
-            }
-            await fetchRuns()
+            localStorage.setItem(slotKey, prevSlot.id)
+            lastTriggeredRef.current = prevSlot.id
+            if (userId) await fetchRuns(userId)
           } catch (e) {
             setError(e?.message || 'Could not trigger scheduled run.')
           } finally {
@@ -590,8 +461,7 @@ export default function App() {
       return () => {
         if (timer) clearInterval(timer)
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [session?.user?.email, userExists, lastTriggeredSlot])
+    }, [email, userId])
 
     return (
       <div className="page">
@@ -599,7 +469,18 @@ export default function App() {
           <div>
             <p className="eyebrow">Scorpio · portfolio insights</p>
             <h1>Run summaries</h1>
-            <p className="sub">Showing the last 7 days for {session.user.email}</p>
+            <p className="sub">Showing the last 7 days for {email}</p>
+          </div>
+
+          <div className="hero-actions">
+            <button
+              type="button"
+              className="btn-primary compact"
+              onClick={() => fetchRuns(userId)}
+              disabled={!userId || refreshing}
+            >
+              {refreshing ? 'Refreshing…' : 'Refresh'}
+            </button>
           </div>
         </header>
 
@@ -611,21 +492,20 @@ export default function App() {
 
           {jobStatus && <div className="info">Job status: {jobStatus}</div>}
 
-          {session?.user?.email && (
+          {email && (
             <div className="muted">
-              Next auto-refresh (~9am/9pm ET) in {formatMs(nextRunMs)}
+              Next auto-run (~9am/9pm ET) in {formatMs(nextRunMs)}
               {nextSlotLabel ? ` · Upcoming slot: ${nextSlotLabel}` : ''}
             </div>
           )}
 
-          {loading && <div className="empty-state">Loading…</div>}
-          {!loading && !hasResults && !error && <div className="empty-state">No results yet from the last 7 days.</div>}
+          {!refreshing && !hasResults && !error && <div className="empty-state">No results yet from the last 7 days.</div>}
           {error && <p className="error">{error}</p>}
 
           {hasResults && (
             <div className="timeline">
               {items.map((item, idx) => (
-                <Card key={`${item.ticker || 'item'}-${idx}`} item={item} />
+                <Card key={`run-${idx}`} item={item} />
               ))}
             </div>
           )}
@@ -634,58 +514,40 @@ export default function App() {
     )
   }
 
-  const AppRoutes = () => {
+  function AppRoutes() {
     const location = useLocation()
     const navigate = useNavigate()
 
+    // Optional: if you land on /login while already authed, push to /summaries
     useEffect(() => {
-      if (location.pathname.startsWith('/auth/callback')) return
       if (!authChecked) return
-
-      if (session && location.pathname === '/login') {
-        navigate('/summaries', { replace: true })
-      } else if (!session && location.pathname !== '/login') {
-        navigate('/login', { replace: true })
-      }
-    }, [authChecked, session, location.pathname, navigate])
+      if (location.pathname === '/login' && session) navigate('/summaries', { replace: true })
+    }, [authChecked, location.pathname, navigate, session])
 
     return (
       <Routes>
         <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/summaries" element={<SummariesPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+        <Route
+          path="/summaries"
+          element={
+            <RequireAuth session={session} authChecked={authChecked}>
+              <SummariesPage />
+            </RequireAuth>
+          }
+        />
+
         <Route
           path="/holdings"
           element={
-            !authChecked ? (
-              <main className="page">
-                <div className="empty-state">Checking session…</div>
-              </main>
-            ) : session && userExists !== false ? (
-              <HoldingsPage
-                session={session}
-                onNoUser={async () => {
-                  await supabase.auth.signOut()
-                  setSession(null)
-                  setUserExists(false)
-                }}
-              />
-            ) : (
-              <Navigate to="/login" replace />
-            )
+            <RequireAuth session={session} authChecked={authChecked}>
+              <HoldingsPage session={session} />
+            </RequireAuth>
           }
         />
-        <Route
-          path="/auth/callback"
-          element={
-            <AuthCallbackPage
-              setError={setError}
-              setAuthBusy={setAuthBusy}
-              setSession={setSession}
-              setAuthChecked={setAuthChecked}
-            />
-          }
-        />
+
         <Route path="*" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
       </Routes>
     )
@@ -697,23 +559,20 @@ export default function App() {
         <div className="navbar-inner">
           <div className="brand">Scorpio</div>
 
+          <div className="nav-links">
+            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
+              Summaries
+            </NavLink>
+            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
+              Holdings
+            </NavLink>
+          </div>
+
           {session ? (
-            <div className="nav-right">
-              <div className="nav-links">
-                <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
-                  Summaries
-                </NavLink>
-                <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
-                  Holdings
-                </NavLink>
-              </div>
-
-              <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
-                Sign out
-              </button>
-            </div>
-          ): null}
-
+            <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
+              Sign out
+            </button>
+          ) : null}
         </div>
       </div>
 
