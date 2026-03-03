@@ -277,3 +277,25 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 .tidy-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .tidy-table .ticker-cell { font-weight: 700; letter-spacing: 0.5px; }
 .holdings-panel .muted.small { margin-top: 2px; }
+
+
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field label { font-weight: 600; }
+.field input {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #f9fbff;
+  transition: border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+.field input:hover {
+  border-color: #c8d6ff;
+  background: #ffffff;
+}
+.field input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(79, 139, 255, 0.18);
+  background: #ffffff;
+}
+.field input::placeholder { color: #9aa3b5; }
