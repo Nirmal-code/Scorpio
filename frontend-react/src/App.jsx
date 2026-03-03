@@ -5,100 +5,6 @@ import remarkGfm from 'remark-gfm'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, NavLink } from 'react-router-dom'
 import HoldingsPage from './HoldingsPage'
 
-const RUN_API_BASE = import.meta.env.VITE_RUN_API_BASE || 'http://165.227.39.159:9000'
-const MCP_CLIENT_BEARER =
-  import.meta.env.VITE_MCP_CLIENT_BEARER ||
-  (typeof window !== 'undefined' ? window.__MCP_CLIENT_BEARER__ : '')
-
-const TZ = 'America/New_York'
-
-const formatMs = (ms) => {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000))
-  const h = String(Math.floor(totalSeconds / 3600)).padStart(2, '0')
-  const m = String(Math.floor((totalSeconds % 3600) / 60)).padStart(2, '0')
-  const s = String(totalSeconds % 60).padStart(2, '0')
-  return `${h}:${m}:${s}`
-}
-
-const getOffsetMinutes = (timeZone = TZ) => {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    timeZoneName: 'longOffset',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-  const tzName = fmt.formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value || 'GMT'
-  const match = tzName.match(/GMT([+-])(\d{2}):(\d{2})/)
-  if (!match) return 0
-  const sign = match[1] === '-' ? -1 : 1
-  const hours = Number(match[2])
-  const minutes = Number(match[3])
-  return sign * (hours * 60 + minutes)
-}
-
-const getTzParts = (date, timeZone = TZ) => {
-  const fmt = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-  const parts = fmt.formatToParts(date)
-  const map = Object.fromEntries(parts.map((p) => [p.type, p.value]))
-  return {
-    year: Number(map.year),
-    month: Number(map.month),
-    day: Number(map.day),
-    hour: Number(map.hour),
-    minute: Number(map.minute),
-    second: Number(map.second),
-  }
-}
-
-const buildSlot = (utcMs, label) => {
-  const p = getTzParts(new Date(utcMs))
-  return {
-    id: `${p.year}-${String(p.month).padStart(2, '0')}-${String(p.day).padStart(2, '0')}-${label}`,
-    time: utcMs,
-    hour: Number(p.hour),
-  }
-}
-
-const getNextSlotInfo = (now = new Date()) => {
-  const offsetMin = getOffsetMinutes()
-  const parts = getTzParts(now)
-  const baseUtcToday = Date.UTC(parts.year, parts.month - 1, parts.day, 0, 0, 0) - offsetMin * 60 * 1000
-
-  const slots = [
-    buildSlot(baseUtcToday - 3 * 60 * 60 * 1000, '21'),
-    buildSlot(baseUtcToday + 9 * 60 * 60 * 1000, '09'),
-    buildSlot(baseUtcToday + 21 * 60 * 60 * 1000, '21'),
-    buildSlot(baseUtcToday + (24 + 9) * 60 * 60 * 1000, '09'),
-    buildSlot(baseUtcToday + (24 + 21) * 60 * 60 * 1000, '21'),
-  ]
-
-  const nowMs = now.getTime()
-  let prevSlot = null
-  let nextSlot = null
-  for (const slot of slots) {
-    if (slot.time <= nowMs && (!prevSlot || slot.time > prevSlot.time)) prevSlot = slot
-    if (slot.time > nowMs && (!nextSlot || slot.time < nextSlot.time)) nextSlot = slot
-  }
-
-  return {
-    prevSlot,
-    nextSlot,
-    remainingMs: nextSlot ? nextSlot.time - nowMs : 0,
-    nextLabel: nextSlot ? (nextSlot.hour === 9 ? '9:00 AM ET' : '9:00 PM ET') : '',
-  }
-}
-
 function Card({ item }) {
   return (
     <article className="card">
@@ -215,14 +121,6 @@ export default function App() {
 
   const [userId, setUserId] = useState(null)
 
-  const [jobStatus, setJobStatus] = useState('')
-  const twelveHoursMs = 12 * 60 * 60 * 1000
-  const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
-  const [nextSlotLabel, setNextSlotLabel] = useState('9:00 AM / 9:00 PM ET')
-
-  const lastTriggeredRef = useRef(null)
-  const jobStatusRef = useRef('')
-
   const hasResults = items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [hasResults, items.length])
 
@@ -287,7 +185,7 @@ export default function App() {
     return reread?.id ?? null
   }
 
-  // When session changes: compute userId and load last run slot.
+  // When session changes: compute userId.
   useEffect(() => {
     let cancelled = false
 
@@ -295,7 +193,6 @@ export default function App() {
       setError('')
       setItems([])
       setUserId(null)
-      lastTriggeredRef.current = null
 
       const email = session?.user?.email
       if (!email) return
@@ -304,9 +201,6 @@ export default function App() {
         const uid = await ensureUserRow(email)
         if (cancelled) return
         setUserId(uid)
-
-        const slotKey = `last_run_slot_${email}`
-        lastTriggeredRef.current = localStorage.getItem(slotKey)
       } catch (e) {
         if (!cancelled) setError(e?.message || 'Could not load user.')
       }
@@ -378,38 +272,6 @@ export default function App() {
     // session will clear via onAuthStateChange
   }
 
-  const triggerRemoteRun = async (email) => {
-    if (!MCP_CLIENT_BEARER) throw new Error('Missing MCP bearer (VITE_MCP_CLIENT_BEARER).')
-    const url = `${RUN_API_BASE.replace(/\/$/, '')}/run`
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${MCP_CLIENT_BEARER}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    })
-    if (!res.ok) throw new Error(`Run trigger failed (${res.status}): ${await res.text()}`)
-    const data = await res.json()
-    const runId = data.id || data.run_id || data.job_id
-    if (!runId) throw new Error('Run trigger did not return an id')
-    return runId
-  }
-
-  const pollRunStatus = async (runId) => {
-    const statusUrl = `${RUN_API_BASE.replace(/\/$/, '')}/run/${runId}`
-    while (true) {
-      const res = await fetch(statusUrl, { headers: { Authorization: `Bearer ${MCP_CLIENT_BEARER}` } })
-      if (!res.ok) throw new Error(`Status check failed (${res.status}): ${await res.text()}`)
-      const data = await res.json()
-      const status = data.status || data.state || ''
-      setJobStatus(status)
-      jobStatusRef.current = status
-      if (status && status.toLowerCase() !== 'running') return status
-      await new Promise((r) => setTimeout(r, 2000))
-    }
-  }
-
   function LoginPage() {
     return (
       <main className="page auth-container single">
@@ -450,56 +312,7 @@ export default function App() {
 
   function SummariesPage() {
     const email = session?.user?.email
-
-    // Stable auto-run timer: only depends on email/userId, not on changing slot state.
-    useEffect(() => {
-      if (!email) return
-
-      const slotKey = `last_run_slot_${email}`
-      lastTriggeredRef.current = localStorage.getItem(slotKey)
-
-      let timer = null
-      let triggering = false
-
-      const tick = async () => {
-        const { prevSlot, remainingMs, nextLabel } = getNextSlotInfo()
-        setNextRunMs(remainingMs)
-        setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
-
-        if (!prevSlot) return
-        if (triggering) return
-        if ((jobStatusRef.current || '').toLowerCase() === 'running') return
-
-        const lastId = lastTriggeredRef.current || localStorage.getItem(slotKey)
-        const nowMs = Date.now()
-        const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
-
-        if (withinWindow && lastId !== prevSlot.id) {
-          triggering = true
-          setJobStatus('running')
-          jobStatusRef.current = 'running'
-          try {
-            const runId = await triggerRemoteRun(email)
-            await pollRunStatus(runId)
-            localStorage.setItem(slotKey, prevSlot.id)
-            lastTriggeredRef.current = prevSlot.id
-            if (userId) await fetchRuns(userId)
-          } catch (e) {
-            setError(e?.message || 'Could not trigger scheduled run.')
-          } finally {
-            setJobStatus('')
-            jobStatusRef.current = ''
-            triggering = false
-          }
-        }
-      }
-
-      tick()
-      timer = setInterval(tick, 60000)
-      return () => {
-        if (timer) clearInterval(timer)
-      }
-    }, [email, userId])
+    const timelineRef = useRef(null)
 
     return (
       <div className="page">
@@ -528,23 +341,16 @@ export default function App() {
             <span className="pill">{countLabel}</span>
           </div>
 
-          {jobStatus && <div className="info">Job status: {jobStatus}</div>}
-
-          {email && (
-            <div className="muted">
-              Next auto-run (~9am/9pm ET) in {formatMs(nextRunMs)}
-              {nextSlotLabel ? ` · Upcoming slot: ${nextSlotLabel}` : ''}
-            </div>
-          )}
-
           {!refreshing && !hasResults && !error && <div className="empty-state">No results yet from the last 7 days.</div>}
           {error && <p className="error">{error}</p>}
 
           {hasResults && (
-            <div className="timeline">
-              {items.map((item, idx) => (
-                <Card key={`run-${idx}`} item={item} />
-              ))}
+            <div className="timeline-wrap">
+              <div className="timeline-row" ref={timelineRef}>
+                {items.map((item, idx) => (
+                  <Card key={`run-${idx}`} item={item} />
+                ))}
+              </div>
             </div>
           )}
         </section>
@@ -605,7 +411,7 @@ export default function App() {
                 Holdings
               </NavLink>
             </div>
-          ): null}
+          ) : null}
 
           {session ? (
             <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
