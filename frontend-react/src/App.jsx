@@ -221,7 +221,7 @@ export default function App() {
 
     const { data: created, error: upsertErr } = await supabase
       .from('users')
-      .upsert({ wealthsimple_email: email }, { onConflict: 'wealthsimple_email' })
+      .upsert({ wealthsimple_email: email })
       .select('id')
       .maybeSingle()
 
