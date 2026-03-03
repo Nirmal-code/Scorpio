@@ -221,7 +221,7 @@ export default function App() {
 
     const { data: created, error: upsertErr } = await supabase
       .from('users')
-      .upsert({ wealthsimple_email: email, id: crypto.randomUUID() })
+      .upsert({ wealthsimple_email: email, id: crypto.randomInt() })
       .select('id')
       .maybeSingle()
 
@@ -491,13 +491,6 @@ export default function App() {
   )
 
   const SummariesPage = () => {
-    if (!authChecked) {
-      return (
-        <main className="page">
-          <div className="empty-state">Checking session…</div>
-        </main>
-      )
-    }
     if (!session) return <Navigate to="/login" replace />
     if (userExists === false) return <Navigate to="/login" replace />
 
