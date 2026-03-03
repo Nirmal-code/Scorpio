@@ -323,14 +323,6 @@ export default function App() {
     }
   }
 
-  const handleRefreshJob = async () => {
-    try {
-      await fetchRuns()
-    } catch (e) {
-      setError(e?.message || 'Could not refresh.')
-    }
-  }
-
   const handleLogout = async () => {
     console.log('Logging out')
     try {
@@ -527,8 +519,8 @@ export default function App() {
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
           <div className="hero-actions">
-            <button type="button" className="btn-primary compact" onClick={handleRefreshJob}>
-              {loading ? 'Refreshing…' : 'Refresh'}
+            <button type="button" className="ghost compact" onClick={handleLogout}>
+              Sign out
             </button>
           </div>
         </header>
