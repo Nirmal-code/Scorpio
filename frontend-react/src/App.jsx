@@ -415,6 +415,17 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
 
+  // Keep lastTriggeredSlot in sync with storage when session changes
+  useEffect(() => {
+    if (!session?.user?.email) {
+      setLastTriggeredSlot(null)
+      return
+    }
+    const slotKey = `last_run_slot_${session.user.email}`
+    const stored = localStorage.getItem(slotKey)
+    if (stored) setLastTriggeredSlot(stored)
+  }, [session?.user?.email])
+
   const LoginPage = () => (
     <main className="page auth-container">
       <div className="auth-hero">
@@ -437,6 +448,76 @@ export default function App() {
   )
 
   const SummariesPage = () => {
+    // Auto-run effect must always be declared, but it will early-return when unauthenticated.
+    useEffect(() => {
+      let timer
+      let triggering = false
+
+      const tick = async () => {
+        if (!session?.user?.email || userExists === false) {
+          setNextRunMs(twelveHoursMs)
+          setNextSlotLabel('9:00 AM / 9:00 PM ET')
+          setLastTriggeredSlot(null)
+          return
+        }
+        const slotKey = `last_run_slot_${session.user.email}`
+        const storedLast = localStorage.getItem(slotKey)
+        const lastId = lastTriggeredSlot || storedLast || null
+        const { prevSlot, nextSlot, remainingMs, nextLabel } = getNextSlotInfo()
+        setNextRunMs(remainingMs)
+        setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
+
+        // Trigger if we haven't run for the most recent slot (within a 6h grace window)
+        if (prevSlot && !triggering && jobStatus !== 'running') {
+          const nowMs = Date.now()
+          const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
+          if (lastId !== prevSlot.id && withinWindow) {
+            triggering = true
+            setJobStatus('running')
+            try {
+              const runId = await triggerRemoteRun(session.user.email)
+              await pollRunStatus(runId)
+              localStorage.setItem(slotKey, prevSlot.id)
+              setLastTriggeredSlot(prevSlot.id)
+              await fetchRuns()
+            } catch (e) {
+              setError(e?.message || 'Could not trigger scheduled run.')
+            } finally {
+              setJobStatus('')
+              triggering = false
+            }
+          }
+        }
+
+        // Safety: if no prev slot matched but we're exactly at next slot time, still trigger
+        if (!prevSlot && remainingMs <= 0 && !triggering && jobStatus !== 'running') {
+          triggering = true
+          setJobStatus('running')
+          try {
+            const runId = await triggerRemoteRun(session.user.email)
+            await pollRunStatus(runId)
+            if (nextSlot) {
+              localStorage.setItem(slotKey, nextSlot.id)
+              setLastTriggeredSlot(nextSlot.id)
+            }
+            await fetchRuns()
+          } catch (e) {
+            setError(e?.message || 'Could not trigger scheduled run.')
+          } finally {
+            setJobStatus('')
+            triggering = false
+          }
+        }
+      }
+
+      tick()
+      timer = setInterval(tick, 60000) // update roughly every 60s without spamming
+      return () => {
+        if (timer) clearInterval(timer)
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [session?.user?.email, userExists, lastTriggeredSlot, jobStatus])
+
     if (!authChecked) {
       return (
         <main className="page">
