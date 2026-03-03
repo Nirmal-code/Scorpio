@@ -617,73 +617,77 @@ export default function App() {
       }
     }, [authChecked, session, location.pathname, navigate])
 
+    const isAuthPage = location.pathname === '/login' || location.pathname.startsWith('/auth/')
+
     return (
-      <Routes>
-        <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/summaries" element={<SummariesPage />} />
-        <Route
-          path="/holdings"
-          element={
-            !authChecked ? (
-              <main className="page">
-                <div className="empty-state">Checking session…</div>
-              </main>
-            ) : session && userExists !== false ? (
-              <HoldingsPage
-                session={session}
-                onNoUser={async () => {
-                  await supabase.auth.signOut()
-                  setSession(null)
-                  setUserExists(false)
-                }}
+      <>
+        {!isAuthPage && (
+          <div className="navbar">
+            <div className="navbar-inner">
+              <div className="brand">Scorpio</div>
+              <div className="nav-right">
+                <div className="nav-links">
+                  <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
+                    Summaries
+                  </NavLink>
+                  <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
+                    Holdings
+                  </NavLink>
+                </div>
+                {session ? (
+                  <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
+                    Sign out
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Routes>
+          <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/summaries" element={<SummariesPage />} />
+          <Route
+            path="/holdings"
+            element={
+              !authChecked ? (
+                <main className="page">
+                  <div className="empty-state">Checking session…</div>
+                </main>
+              ) : session && userExists !== false ? (
+                <HoldingsPage
+                  session={session}
+                  onNoUser={async () => {
+                    await supabase.auth.signOut()
+                    setSession(null)
+                    setUserExists(false)
+                  }}
+                />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+          <Route
+            path="/auth/callback"
+            element={
+              <AuthCallbackPage
+                setError={setError}
+                setAuthBusy={setAuthBusy}
+                setSession={setSession}
+                setAuthChecked={setAuthChecked}
               />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route
-          path="/auth/callback"
-          element={
-            <AuthCallbackPage
-              setError={setError}
-              setAuthBusy={setAuthBusy}
-              setSession={setSession}
-              setAuthChecked={setAuthChecked}
-            />
-          }
-        />
-        <Route path="*" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
-      </Routes>
+            }
+          />
+          <Route path="*" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
+        </Routes>
+      </>
     )
   }
 
   return (
     <BrowserRouter>
-      <div className="navbar">
-        <div className="navbar-inner">
-          <div className="brand">Scorpio</div>
-
-          <div className="nav-right">
-            <div className="nav-links">
-              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
-                Summaries
-              </NavLink>
-              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
-                Holdings
-              </NavLink>
-            </div>
-
-            {session ? (
-              <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
-                Sign out
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
       <AppRoutes />
     </BrowserRouter>
   )
