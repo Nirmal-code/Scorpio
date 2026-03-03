@@ -221,7 +221,7 @@ export default function App() {
 
     const { data: created, error: upsertErr } = await supabase
       .from('users')
-      .upsert({ wealthsimple_email: email })
+      .upsert({ wealthsimple_email: email, id: crypto.randomUUID() })
       .select('id')
       .maybeSingle()
 
