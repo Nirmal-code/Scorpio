@@ -21,7 +21,6 @@ const formatMs = (ms) => {
 }
 
 const getOffsetMinutes = (timeZone = TZ) => {
-  // Parse offsets like "GMT-05:00" into minutes (-300)
   const fmt = new Intl.DateTimeFormat('en-US', {
     timeZone,
     timeZoneName: 'longOffset',
@@ -96,11 +95,7 @@ const getNextSlotInfo = (now = new Date()) => {
     prevSlot,
     nextSlot,
     remainingMs: nextSlot ? nextSlot.time - nowMs : 0,
-    nextLabel: nextSlot
-      ? nextSlot.hour === 9
-        ? '9:00 AM ET'
-        : '9:00 PM ET'
-      : '',
+    nextLabel: nextSlot ? (nextSlot.hour === 9 ? '9:00 AM ET' : '9:00 PM ET') : '',
   }
 }
 
@@ -129,12 +124,6 @@ function Card({ item }) {
   )
 }
 
-/**
- * Robust OAuth callback handler:
- * - Handles PKCE `?code=...`
- * - Also works if provider returns tokens in the hash
- * - Waits for Supabase to persist the session, then navigates
- */
 function AuthCallbackPage({ setError, setAuthBusy, setSession, setAuthChecked }) {
   const navigate = useNavigate()
   const location = useLocation()
@@ -147,8 +136,6 @@ function AuthCallbackPage({ setError, setAuthBusy, setSession, setAuthChecked })
         setError('')
         setAuthBusy(true)
 
-        // If Supabase already detected session from URL (hash flow), it may already be stored.
-        // If PKCE code exists, exchange it.
         const params = new URLSearchParams(location.search)
         const code = params.get('code')
         const err = params.get('error_description') || params.get('error')
@@ -159,15 +146,12 @@ function AuthCallbackPage({ setError, setAuthBusy, setSession, setAuthChecked })
           if (error) throw error
         }
 
-        // Now read the session that should be persisted by Supabase.
         const { data, error } = await supabase.auth.getSession()
         if (error) throw error
 
         const newSession = data?.session ?? null
         if (!newSession) {
-          throw new Error(
-            'Login completed but no session was created. Check Supabase Auth settings + redirect URLs.'
-          )
+          throw new Error('Login completed but no session was created. Check Supabase Auth settings + redirect URLs.')
         }
 
         if (!cancelled) {
@@ -207,15 +191,13 @@ export default function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  // authChecked prevents redirect loops: only enforce routes after first getSession completes
   const [authChecked, setAuthChecked] = useState(false)
-
-  // authBusy is ONLY for disabling login button/spinner while launching oauth or exchanging code
   const [authBusy, setAuthBusy] = useState(false)
 
   const [session, setSession] = useState(null)
   const [userExists, setUserExists] = useState(null)
   const [userId, setUserId] = useState(null)
+
   const [jobStatus, setJobStatus] = useState('')
   const twelveHoursMs = 12 * 60 * 60 * 1000
   const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
@@ -248,6 +230,7 @@ export default function App() {
         setUserExists(false)
         throw new Error('No user found for that email')
       }
+
       setUserExists(true)
       setUserId(userRow.id)
 
@@ -272,11 +255,11 @@ export default function App() {
         source: 'runs',
         tone: 'neutral',
       }))
+
       setItems(mapped)
     } catch (e) {
       setError(e?.message || 'Could not fetch history.')
       setItems([])
-      // If user lookup failed, force logout and send back to login
       if (e?.message?.includes('No user found')) {
         await supabase.auth.signOut()
         setSession(null)
@@ -335,33 +318,34 @@ export default function App() {
       const status = data.status || data.state
       setJobStatus(status || '')
       jobStatusRef.current = status || ''
-      if (status && status.toLowerCase() !== 'running') {
-        return status
-      }
+      if (status && status.toLowerCase() !== 'running') return status
       await new Promise((resolve) => setTimeout(resolve, 2000))
     }
   }
 
   const handleRefreshJob = async () => {
-    // Manual refresh now only reloads existing runs; it does not trigger a remote job
-    await fetchRuns()
+    try {
+      await fetchRuns()
+    } catch (e) {
+      setError(e?.message || 'Could not refresh.')
+    }
   }
 
   const handleLogout = async () => {
-    setLoading(true)
-    await supabase.auth.signOut()
-    setItems([])
-    setSession(null)
-    setLoading(false)
+    try {
+      setLoading(true)
+      await supabase.auth.signOut()
+      setItems([])
+      setSession(null)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleGoogleLogin = async () => {
     try {
       setError('')
       setAuthBusy(true)
-
-      // Don’t rely on VITE_SITE_URL unless you’re 100% sure it matches prod origin.
-      // Using window.location.origin avoids a VERY common redirect mismatch bug.
       const redirectTo = `${window.location.origin}/auth/callback`
 
       const { error } = await supabase.auth.signInWithOAuth({
@@ -369,39 +353,36 @@ export default function App() {
         options: { redirectTo },
       })
       if (error) throw error
-      // Supabase will redirect the browser to Google, then back to /auth/callback.
     } catch (e) {
       setError(e?.message || 'Could not start Google sign-in.')
       setAuthBusy(false)
     }
   }
 
-  // Initial auth bootstrap + subscription
   useEffect(() => {
     let mounted = true
 
     const init = async () => {
-    try {
-      const { data, error } = await supabase.auth.getSession()
-      if (!mounted) return
-      if (error) setError(error.message)
-      setSession(data?.session ?? null)
-      setUserExists(null) // unknown until we check
-    } catch (e) {
-      if (mounted) setError(e?.message || 'Could not check session')
-    } finally {
-      if (mounted) setAuthChecked(true)
-    }
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (!mounted) return
+        if (error) setError(error.message)
+        setSession(data?.session ?? null)
+        setUserExists(null)
+      } catch (e) {
+        if (mounted) setError(e?.message || 'Could not check session')
+      } finally {
+        if (mounted) setAuthChecked(true)
+      }
     }
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
       if (!mounted) return
       setSession(newSession ?? null)
-      setUserExists(null) // reset until verified
+      setUserExists(null)
     })
 
     init()
-
     return () => {
       mounted = false
       listener?.subscription?.unsubscribe()
@@ -419,7 +400,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
 
-  // Keep lastTriggeredSlot in sync with storage when session changes
   useEffect(() => {
     if (!session?.user?.email) {
       setLastTriggeredSlot(null)
@@ -437,9 +417,7 @@ export default function App() {
       <div className="auth-hero">
         <p className="eyebrow">Scorpio · portfolio intelligence</p>
         <h1>Enter the den.</h1>
-        <p className="sub">
-          Your AI-generated run summaries, all in one place. Sign in with Google to continue.
-        </p>
+        <p className="sub">Your AI-generated run summaries, all in one place. Sign in with Google to continue.</p>
         <div className="glow"></div>
       </div>
       <div className="panel auth-panel">
@@ -464,8 +442,6 @@ export default function App() {
     if (!session) return <Navigate to="/login" replace />
     if (userExists === false) return <Navigate to="/login" replace />
 
-    // Periodic auto-run trigger with countdown (9am/9pm ET).
-    // Lives inside the summaries page so other pages (e.g., Holdings) don't re-render every second.
     useEffect(() => {
       let timer
       let triggering = false
@@ -478,6 +454,7 @@ export default function App() {
           lastTriggeredRef.current = null
           return
         }
+
         const slotKey = `last_run_slot_${session.user.email}`
         const storedLast = localStorage.getItem(slotKey)
         const lastId = lastTriggeredRef.current || lastTriggeredSlot || storedLast || null
@@ -485,7 +462,6 @@ export default function App() {
         setNextRunMs(remainingMs)
         setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
 
-        // Trigger if we haven't run for the most recent slot (within a 6h grace window)
         if (prevSlot && !triggering && jobStatusRef.current !== 'running') {
           const nowMs = Date.now()
           const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
@@ -510,7 +486,6 @@ export default function App() {
           }
         }
 
-        // Safety: if no prev slot matched but we're exactly at next slot time, still trigger
         if (!prevSlot && remainingMs <= 0 && !triggering && jobStatusRef.current !== 'running') {
           triggering = true
           setJobStatus('running')
@@ -535,11 +510,10 @@ export default function App() {
       }
 
       tick()
-      timer = setInterval(tick, 60000) // update roughly every 60s without spamming
+      timer = setInterval(tick, 60000)
       return () => {
         if (timer) clearInterval(timer)
       }
-      // We intentionally avoid jobStatus in deps to keep a stable interval.
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [session?.user?.email, userExists, lastTriggeredSlot])
 
@@ -551,14 +525,14 @@ export default function App() {
             <h1>Run summaries</h1>
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
-            <div className="hero-actions">
-              <button type="button" className="btn-primary compact" onClick={handleRefreshJob}>
-                {loading ? 'Refreshing…' : 'Refresh'}
-              </button>
-              <button type="button" className="ghost compact" onClick={handleLogout}>
-                Sign out
-              </button>
-            </div>
+          <div className="hero-actions">
+            <button type="button" className="btn-primary compact" onClick={handleRefreshJob} disabled={loading}>
+              {loading ? 'Refreshing…' : 'Refresh'}
+            </button>
+            <button type="button" className="ghost compact" onClick={handleLogout} disabled={loading}>
+              Sign out
+            </button>
+          </div>
         </header>
 
         <section className="panel" id="results">
@@ -566,7 +540,9 @@ export default function App() {
             <h2>Prediction history</h2>
             <span className="pill">{countLabel}</span>
           </div>
+
           {jobStatus && <div className="info">Job status: {jobStatus}</div>}
+
           {session?.user?.email && (
             <div className="muted">
               Next auto-refresh (~9am/9pm ET) in {formatMs(nextRunMs)}
@@ -575,9 +551,7 @@ export default function App() {
           )}
 
           {loading && <div className="empty-state">Loading…</div>}
-          {!loading && !hasResults && !error && (
-            <div className="empty-state">No results yet from the last 7 days.</div>
-          )}
+          {!loading && !hasResults && !error && <div className="empty-state">No results yet from the last 7 days.</div>}
           {error && <p className="error">{error}</p>}
 
           {hasResults && (
@@ -597,10 +571,7 @@ export default function App() {
     const navigate = useNavigate()
 
     useEffect(() => {
-      // Never redirect while callback route is processing.
       if (location.pathname.startsWith('/auth/callback')) return
-
-      // Don’t enforce auth redirects until the initial auth check finishes.
       if (!authChecked) return
 
       if (session && location.pathname === '/login') {
