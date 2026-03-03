@@ -206,6 +206,29 @@ export default function App() {
   const lastTriggeredRef = useRef(null)
   const jobStatusRef = useRef('')
 
+  // Ensure a public "users" row exists for the signed-in email (creates on first sign-up).
+  const ensureUserRow = async (email) => {
+    if (!email) return null
+
+    const { data: existing, error: selectErr } = await supabase
+      .from('users')
+      .select('id')
+      .eq('wealthsimple_email', email)
+      .maybeSingle()
+
+    if (selectErr) throw selectErr
+    if (existing?.id) return existing.id
+
+    const { data: created, error: upsertErr } = await supabase
+      .from('users')
+      .upsert({ wealthsimple_email: email }, { onConflict: 'wealthsimple_email' })
+      .select('id')
+      .maybeSingle()
+
+    if (upsertErr) throw upsertErr
+    return created?.id ?? null
+  }
+
   const hasResults = items && items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [items, hasResults])
 
@@ -219,33 +242,15 @@ export default function App() {
 
     setLoading(true)
     try {
-      // Ensure a user row exists; create if missing (useful for new signups)
-      const { data: userRow, error: userErr } = await supabase
-        .from('users')
-        .select('id')
-        .eq('wealthsimple_email', authedEmail)
-        .maybeSingle()
+      const ensuredUserId = await ensureUserRow(authedEmail)
 
-      if (userErr) throw userErr
-
-      let ensuredUser = userRow
-      if (!ensuredUser) {
-        const { data: created, error: createErr } = await supabase
-          .from('users')
-          .upsert({ wealthsimple_email: authedEmail }, { onConflict: 'wealthsimple_email' })
-          .select('id')
-          .maybeSingle()
-        if (createErr) throw createErr
-        ensuredUser = created
-      }
-
-      if (!ensuredUser) {
+      if (!ensuredUserId) {
         setUserExists(false)
         throw new Error('No user found for that email')
       }
 
       setUserExists(true)
-      setUserId(ensuredUser.id)
+      setUserId(ensuredUserId)
 
       const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
@@ -375,6 +380,7 @@ export default function App() {
         provider: 'google',
         options: { redirectTo },
       })
+      
       if (error) throw error
     } catch (e) {
       setError(e?.message || 'Could not start Google sign-up.')
@@ -390,8 +396,12 @@ export default function App() {
         const { data, error } = await supabase.auth.getSession()
         if (!mounted) return
         if (error) setError(error.message)
-        setSession(data?.session ?? null)
+        const sess = data?.session ?? null
+        setSession(sess)
         setUserExists(null)
+        if (sess?.user?.email) {
+          await ensureUserRow(sess.user.email)
+        }
       } catch (e) {
         if (mounted) setError(e?.message || 'Could not check session')
       } finally {
@@ -399,10 +409,17 @@ export default function App() {
       }
     }
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       if (!mounted) return
       setSession(newSession ?? null)
       setUserExists(null)
+      if (newSession?.user?.email) {
+        try {
+          await ensureUserRow(newSession.user.email)
+        } catch (e) {
+          setError(e?.message || 'Could not create user row')
+        }
+      }
     })
 
     init()
@@ -433,9 +450,7 @@ export default function App() {
     // If the user just signed up, create their row immediately.
     const signupIntent = localStorage.getItem('signup_intent')
     if (signupIntent === '1') {
-      supabase
-        .from('users')
-        .upsert({ wealthsimple_email: session.user.email }, { onConflict: 'wealthsimple_email' })
+      ensureUserRow(session.user.email)
         .then(() => {
           localStorage.removeItem('signup_intent')
         })
