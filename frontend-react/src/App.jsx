@@ -214,11 +214,16 @@ export default function App() {
     const authedEmail = session?.user?.email || ''
     if (!authedEmail) {
       setError('Please sign in with Google to fetch your history.')
-      return
-    }
+  return (
+    <BrowserRouter>
+      <AppRoutes />
+    </BrowserRouter>
+  )
+}
 
     setLoading(true)
     try {
+      // Ensure a user row exists; create if missing (useful for new signups)
       const { data: userRow, error: userErr } = await supabase
         .from('users')
         .select('id')
@@ -226,20 +231,32 @@ export default function App() {
         .maybeSingle()
 
       if (userErr) throw userErr
-      if (!userRow) {
+
+      let ensuredUser = userRow
+      if (!ensuredUser) {
+        const { data: created, error: createErr } = await supabase
+          .from('users')
+          .upsert({ wealthsimple_email: authedEmail }, { onConflict: 'wealthsimple_email' })
+          .select('id')
+          .maybeSingle()
+        if (createErr) throw createErr
+        ensuredUser = created
+      }
+
+      if (!ensuredUser) {
         setUserExists(false)
         throw new Error('No user found for that email')
       }
 
       setUserExists(true)
-      setUserId(userRow.id)
+      setUserId(ensuredUser.id)
 
       const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
 
       const { data: runs, error: runsErr } = await supabase
         .from('runs')
         .select('summary, created_at')
-        .eq('user_id', userRow.id)
+        .eq('user_id', ensuredUser.id)
         .gte('created_at', sinceIso)
         .order('created_at', { ascending: false })
         .limit(200)
@@ -352,6 +369,23 @@ export default function App() {
     }
   }
 
+  const handleGoogleSignup = async () => {
+    try {
+      setError('')
+      setAuthBusy(true)
+      localStorage.setItem('signup_intent', '1')
+      const redirectTo = `${window.location.origin}/auth/callback`
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo },
+      })
+      if (error) throw error
+    } catch (e) {
+      setError(e?.message || 'Could not start Google sign-up.')
+      setAuthBusy(false)
+    }
+  }
+
   useEffect(() => {
     let mounted = true
 
@@ -399,6 +433,21 @@ export default function App() {
       lastTriggeredRef.current = null
       return
     }
+
+    // If the user just signed up, create their row immediately.
+    const signupIntent = localStorage.getItem('signup_intent')
+    if (signupIntent === '1') {
+      supabase
+        .from('users')
+        .upsert({ wealthsimple_email: session.user.email }, { onConflict: 'wealthsimple_email' })
+        .then(() => {
+          localStorage.removeItem('signup_intent')
+        })
+        .catch(() => {
+          // swallow; fetchRuns will surface errors if needed
+        })
+    }
+
     const slotKey = `last_run_slot_${session.user.email}`
     const stored = localStorage.getItem(slotKey)
     if (stored) setLastTriggeredSlot(stored)
@@ -414,12 +463,18 @@ export default function App() {
         <div className="glow"></div>
       </div>
       <div className="panel auth-panel">
-        <h2>Sign in</h2>
-        <button type="button" className="btn-primary full" onClick={handleGoogleLogin} disabled={authBusy}>
-          {authBusy ? 'Opening Google…' : 'Continue with Google'}
-        </button>
+        <h2>Welcome back</h2>
+        <p className="muted small">Use your Google account to access your portfolio summaries.</p>
+        <div className="auth-actions">
+          <button type="button" className="btn-primary full" onClick={handleGoogleLogin} disabled={authBusy}>
+            {authBusy ? 'Opening Google…' : 'Continue with Google'}
+          </button>
+          <button type="button" className="ghost full" onClick={handleGoogleSignup} disabled={authBusy}>
+            {authBusy ? 'Opening Google…' : 'Sign up with Google'}
+          </button>
+        </div>
         {error && <p className="error">{error}</p>}
-        <p className="notice">Note: private access only. Outside users are not permitted at this time.</p>
+        <p className="notice">Private access only. Outside users are not permitted.</p>
       </div>
     </main>
   )
@@ -566,73 +621,69 @@ export default function App() {
       }
     }, [authChecked, session, location.pathname, navigate])
 
+    const isAuthPage = location.pathname === '/login' || location.pathname.startsWith('/auth/')
+
     return (
-      <Routes>
-        <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/summaries" element={<SummariesPage />} />
-        <Route
-          path="/holdings"
-          element={
-            !authChecked ? (
-              <main className="page">
-                <div className="empty-state">Checking session…</div>
-              </main>
-            ) : session && userExists !== false ? (
-              <HoldingsPage
-                session={session}
-                onNoUser={async () => {
-                  await supabase.auth.signOut()
-                  setSession(null)
-                  setUserExists(false)
-                }}
+      <>
+        {!isAuthPage && (
+          <div className="navbar">
+            <div className="navbar-inner">
+              <div className="brand">Scorpio</div>
+              <div className="nav-links">
+                <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
+                  Summaries
+                </NavLink>
+                <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
+                  Holdings
+                </NavLink>
+              </div>
+            </div>
+          </div>
+        )}
+        <Routes>
+          <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/summaries" element={<SummariesPage />} />
+          <Route
+            path="/holdings"
+            element={
+              !authChecked ? (
+                <main className="page">
+                  <div className="empty-state">Checking session…</div>
+                </main>
+              ) : session && userExists !== false ? (
+                <HoldingsPage
+                  session={session}
+                  onNoUser={async () => {
+                    await supabase.auth.signOut()
+                    setSession(null)
+                    setUserExists(false)
+                  }}
+                />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+          <Route
+            path="/auth/callback"
+            element={
+              <AuthCallbackPage
+                setError={setError}
+                setAuthBusy={setAuthBusy}
+                setSession={setSession}
+                setAuthChecked={setAuthChecked}
               />
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-        <Route
-          path="/auth/callback"
-          element={
-            <AuthCallbackPage
-              setError={setError}
-              setAuthBusy={setAuthBusy}
-              setSession={setSession}
-              setAuthChecked={setAuthChecked}
-            />
-          }
-        />
-        <Route path="*" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
-      </Routes>
+            }
+          />
+          <Route path="*" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
+        </Routes>
+      </>
     )
   }
 
   return (
     <BrowserRouter>
-      <div className="navbar">
-        <div className="navbar-inner">
-          <div className="brand">Scorpio</div>
-
-          <div className="nav-right">
-            <div className="nav-links">
-              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
-                Summaries
-              </NavLink>
-              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
-                Holdings
-              </NavLink>
-            </div>
-
-            {session ? (
-              <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
-                Sign out
-              </button>
-            ) : null}
-          </div>
-        </div>
-      </div>
-
       <AppRoutes />
     </BrowserRouter>
   )
