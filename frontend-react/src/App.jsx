@@ -22,7 +22,14 @@ const formatMs = (ms) => {
 
 const getOffsetMinutes = (timeZone = TZ) => {
   // Parse offsets like "GMT-05:00" into minutes (-300)
-  const fmt = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'shortOffset', hour12: false })
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'longOffset',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
   const tzName = fmt.formatToParts(new Date()).find((p) => p.type === 'timeZoneName')?.value || 'GMT'
   const match = tzName.match(/GMT([+-])(\d{2}):(\d{2})/)
   if (!match) return 0
@@ -403,6 +410,7 @@ export default function App() {
     else {
       setItems([])
       setUserExists(null)
+      setLastTriggeredSlot(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.user?.email])
@@ -453,21 +461,17 @@ export default function App() {
           return
         }
         const slotKey = `last_run_slot_${session.user.email}`
+        const storedLast = localStorage.getItem(slotKey)
+        const lastId = lastTriggeredSlot || storedLast || null
         const { prevSlot, nextSlot, remainingMs, nextLabel } = getNextSlotInfo()
         setNextRunMs(remainingMs)
         setNextSlotLabel(nextLabel || '9:00 AM / 9:00 PM ET')
-
-        // sync from storage once per render if needed
-        if (!lastTriggeredSlot) {
-          const stored = localStorage.getItem(slotKey)
-          if (stored) setLastTriggeredSlot(stored)
-        }
 
         // Trigger if we haven't run for the most recent slot (within a 6h grace window)
         if (prevSlot && !triggering && jobStatus !== 'running') {
           const nowMs = Date.now()
           const withinWindow = nowMs - prevSlot.time < 6 * 60 * 60 * 1000
-          if (lastTriggeredSlot !== prevSlot.id && withinWindow) {
+          if (lastId !== prevSlot.id && withinWindow) {
             triggering = true
             setJobStatus('running')
             try {
@@ -507,7 +511,7 @@ export default function App() {
       }
 
       tick()
-      timer = setInterval(tick, 15000) // update roughly every 15s without spamming
+      timer = setInterval(tick, 60000) // update roughly every 60s without spamming
       return () => {
         if (timer) clearInterval(timer)
       }
