@@ -199,9 +199,14 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
   display: flex;
   gap: 10px;
   align-items: center;
+  position: relative;
+  z-index: 2;
 }
 .btn-primary.full { width: 100%; justify-content: center; }
 .notice { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
+.hero-actions button {
+  pointer-events: auto;
+}
 
 .form-grid {
   display: grid;
