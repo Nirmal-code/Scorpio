@@ -65,6 +65,10 @@ body {
   gap: 16px;
   align-items: center;
   margin-bottom: 28px;
+
+  /* NEW: prevent weird overlap / click interception on wide screens */
+  position: relative;
+  z-index: 5;
 }
 
 .hero h1 {
@@ -236,9 +240,17 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
   display: flex;
   gap: 10px;
   align-items: center;
+
+  flex-shrink: 0;
   position: relative;
-  z-index: 2;
+  z-index: 6;
 }
+
+.hero > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 
 .notice { color: var(--muted); font-size: 0.9rem; margin-top: 10px; }
 
