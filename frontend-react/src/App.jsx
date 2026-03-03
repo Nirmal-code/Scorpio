@@ -124,16 +124,25 @@ function Card({ item }) {
   )
 }
 
-function AuthCallbackPage() {
+/**
+ * OAuth callback handler that prevents redirect races:
+ * - Exchanges ?code=...
+ * - Waits for supabase.auth.getSession()
+ * - Pushes session into App state immediately (onSession)
+ */
+function AuthCallbackPage({ onSession, onError }) {
   const navigate = useNavigate()
   const location = useLocation()
-  const [error, setError] = useState('')
+  const [localError, setLocalError] = useState('')
 
   useEffect(() => {
     let cancelled = false
-    const run = async () => {
+
+    const complete = async () => {
       try {
-        setError('')
+        setLocalError('')
+        onError?.('')
+
         const params = new URLSearchParams(location.search)
         const err = params.get('error_description') || params.get('error')
         if (err) throw new Error(err)
@@ -144,27 +153,39 @@ function AuthCallbackPage() {
           if (exErr) throw exErr
         }
 
-        // session is now stored; just navigate
-        if (!cancelled) navigate('/summaries', { replace: true })
-      } catch (e) {
+        const { data, error: sessErr } = await supabase.auth.getSession()
+        if (sessErr) throw sessErr
+        const sess = data?.session ?? null
+        if (!sess) {
+          throw new Error('Login completed but no session was created. Check Supabase Auth redirect URLs.')
+        }
+
         if (!cancelled) {
-          setError(e?.message || 'Could not complete sign-in.')
+          onSession?.(sess)
+          navigate('/summaries', { replace: true })
+        }
+      } catch (e) {
+        const msg = e?.message || 'Could not complete sign-in.'
+        if (!cancelled) {
+          setLocalError(msg)
+          onError?.(msg)
           navigate('/login', { replace: true })
         }
       }
     }
-    run()
+
+    complete()
     return () => {
       cancelled = true
     }
-  }, [location.search, navigate])
+  }, [location.search, navigate, onSession, onError])
 
   return (
     <main className="page auth-container">
       <div className="panel auth-panel">
         <h1>Signing you in…</h1>
         <p className="sub">Completing Google sign-in.</p>
-        {error && <p className="error">{error}</p>}
+        {localError && <p className="error">{localError}</p>}
       </div>
     </main>
   )
@@ -192,21 +213,20 @@ export default function App() {
   const [items, setItems] = useState([])
   const [refreshing, setRefreshing] = useState(false)
 
-  // App-level user id (from your public `users` table)
   const [userId, setUserId] = useState(null)
 
-  // auto-run countdown state
   const [jobStatus, setJobStatus] = useState('')
   const twelveHoursMs = 12 * 60 * 60 * 1000
   const [nextRunMs, setNextRunMs] = useState(twelveHoursMs)
   const [nextSlotLabel, setNextSlotLabel] = useState('9:00 AM / 9:00 PM ET')
+
   const lastTriggeredRef = useRef(null)
   const jobStatusRef = useRef('')
 
   const hasResults = items.length > 0
   const countLabel = useMemo(() => (hasResults ? items.length : 0), [hasResults, items.length])
 
-  // ---- Auth bootstrap (THIS is what prevents "logged out on refresh") ----
+  // Auth bootstrap: does NOT log you out on refresh.
   useEffect(() => {
     let mounted = true
 
@@ -235,11 +255,10 @@ export default function App() {
     }
   }, [])
 
-  // ---- Public users table: find or create your row (NEVER logs you out) ----
+  // Public users table: find or create row. NEVER sign out due to DB issues.
   const ensureUserRow = async (email) => {
     if (!email) return null
 
-    // 1) try read
     const { data: existing, error: selErr } = await supabase
       .from('users')
       .select('id')
@@ -249,7 +268,6 @@ export default function App() {
     if (selErr) throw selErr
     if (existing?.id) return existing.id
 
-    // 2) create
     const generatedId = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000))
     const { data: created, error: insErr } = await supabase
       .from('users')
@@ -259,7 +277,7 @@ export default function App() {
 
     if (!insErr && created?.id) return created.id
 
-    // 3) if insert raced, re-read
+    // possible race — re-read
     const { data: reread, error: rrErr } = await supabase
       .from('users')
       .select('id')
@@ -269,7 +287,7 @@ export default function App() {
     return reread?.id ?? null
   }
 
-  // When session changes, set userId + load runs
+  // When session changes: compute userId and load last run slot.
   useEffect(() => {
     let cancelled = false
 
@@ -284,7 +302,11 @@ export default function App() {
 
       try {
         const uid = await ensureUserRow(email)
-        if (!cancelled) setUserId(uid)
+        if (cancelled) return
+        setUserId(uid)
+
+        const slotKey = `last_run_slot_${email}`
+        lastTriggeredRef.current = localStorage.getItem(slotKey)
       } catch (e) {
         if (!cancelled) setError(e?.message || 'Could not load user.')
       }
@@ -323,7 +345,6 @@ export default function App() {
       }))
       setItems(mapped)
     } catch (e) {
-      // IMPORTANT: do NOT sign out on errors
       setError(e?.message || 'Could not fetch history.')
     } finally {
       setRefreshing(false)
@@ -354,13 +375,11 @@ export default function App() {
   const handleLogout = async () => {
     setError('')
     await supabase.auth.signOut()
-    // state will clear via onAuthStateChange
+    // session will clear via onAuthStateChange
   }
 
   const triggerRemoteRun = async (email) => {
-    if (!MCP_CLIENT_BEARER) {
-      throw new Error('Missing MCP bearer (VITE_MCP_CLIENT_BEARER).')
-    }
+    if (!MCP_CLIENT_BEARER) throw new Error('Missing MCP bearer (VITE_MCP_CLIENT_BEARER).')
     const url = `${RUN_API_BASE.replace(/\/$/, '')}/run`
     const res = await fetch(url, {
       method: 'POST',
@@ -372,7 +391,9 @@ export default function App() {
     })
     if (!res.ok) throw new Error(`Run trigger failed (${res.status}): ${await res.text()}`)
     const data = await res.json()
-    return data.id || data.run_id || data.job_id
+    const runId = data.id || data.run_id || data.job_id
+    if (!runId) throw new Error('Run trigger did not return an id')
+    return runId
   }
 
   const pollRunStatus = async (runId) => {
@@ -413,7 +434,7 @@ export default function App() {
   function SummariesPage() {
     const email = session?.user?.email
 
-    // Auto-trigger job at 9am/9pm ET with a stable interval (does not depend on changing state)
+    // Stable auto-run timer: only depends on email/userId, not on changing slot state.
     useEffect(() => {
       if (!email) return
 
@@ -518,7 +539,6 @@ export default function App() {
     const location = useLocation()
     const navigate = useNavigate()
 
-    // Optional: if you land on /login while already authed, push to /summaries
     useEffect(() => {
       if (!authChecked) return
       if (location.pathname === '/login' && session) navigate('/summaries', { replace: true })
@@ -528,7 +548,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to={session ? '/summaries' : '/login'} replace />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+        <Route path="/auth/callback" element={<AuthCallbackPage onSession={setSession} onError={setError} />} />
 
         <Route
           path="/summaries"
