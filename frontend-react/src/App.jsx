@@ -609,10 +609,10 @@ export default function App() {
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
             <div className="hero-actions">
-              <button type="button" className="btn-primary compact" onClick={handleRefreshJob} disabled={loading}>
+              <button type="button" className="btn-primary compact" onClick={handleRefreshJob}>
                 {loading ? 'Refreshing…' : 'Refresh'}
               </button>
-              <button type="button" className="ghost compact" onClick={handleLogout} disabled={loading}>
+              <button type="button" className="ghost compact" onClick={handleLogout}>
                 Sign out
               </button>
             </div>
