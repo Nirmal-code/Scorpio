@@ -57,6 +57,16 @@ body {
   transition: background 120ms ease, color 120ms ease;
 }
 
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nav-ghost {
+  white-space: nowrap;
+}
+
 .nav-link.active, .nav-link:hover { color: var(--text); background: var(--pill); }
 
 .hero {

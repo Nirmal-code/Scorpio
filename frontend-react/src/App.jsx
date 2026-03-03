@@ -527,11 +527,8 @@ export default function App() {
             <p className="sub">Showing the last 7 days for {session.user.email}</p>
           </div>
           <div className="hero-actions">
-            <button type="button" className="btn-primary compact" onClick={handleRefreshJob} disabled={loading}>
+            <button type="button" className="btn-primary compact" onClick={handleRefreshJob}>
               {loading ? 'Refreshing…' : 'Refresh'}
-            </button>
-            <button type="button" className="ghost compact" onClick={handleLogout} disabled={loading}>
-              Sign out
             </button>
           </div>
         </header>
@@ -629,16 +626,26 @@ export default function App() {
       <div className="navbar">
         <div className="navbar-inner">
           <div className="brand">Scorpio</div>
-          <div className="nav-links">
-            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
-              Summaries
-            </NavLink>
-            <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
-              Holdings
-            </NavLink>
+
+          <div className="nav-right">
+            <div className="nav-links">
+              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/summaries">
+                Summaries
+              </NavLink>
+              <NavLink className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`} to="/holdings">
+                Holdings
+              </NavLink>
+            </div>
+
+            {session ? (
+              <button type="button" className="ghost compact nav-ghost" onClick={handleLogout}>
+                Sign out
+              </button>
+            ) : null}
           </div>
         </div>
       </div>
+
       <AppRoutes />
     </BrowserRouter>
   )
