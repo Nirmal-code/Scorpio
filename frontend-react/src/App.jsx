@@ -321,6 +321,7 @@ export default function App() {
             <p className="eyebrow">Scorpio · portfolio insights</p>
             <h1>Run summaries</h1>
             <p className="sub">Showing the last 7 days for {email}</p>
+            <p className="muted small">Runs are generated automatically around 9:00 AM and 9:00 PM ET each day.</p>
           </div>
 
           <div className="hero-actions">
