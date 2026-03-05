@@ -191,16 +191,12 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 
 .timeline-row {
   display: flex;
-  flex-direction: row;
-  gap: 14px;
-  overflow-x: auto;
-  padding: 6px 4px 10px;
-  scroll-snap-type: x mandatory;
-  scroll-padding: 6px;
+  flex-direction: column;
+  gap: 16px;
+  padding: 6px 0 10px;
 }
 
-.timeline-row::-webkit-scrollbar { height: 10px; }
-.timeline-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.timeline-row::-webkit-scrollbar { display: none; }
 .empty-state { color: var(--muted); }
 
 .card {
@@ -208,10 +204,9 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
-  min-width: 280px;
-  max-width: 360px;
-  flex: 0 0 320px;
-  scroll-snap-align: start;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 
 .card .date-top { color: var(--muted); font-size: 0.9rem; margin: 0 0 4px; }
