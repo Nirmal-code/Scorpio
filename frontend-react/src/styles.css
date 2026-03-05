@@ -190,16 +190,13 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
 }
 
 .timeline-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 14px;
-  overflow-x: auto;
-  padding: 6px 4px 10px;
-  scroll-snap-type: x mandatory;
-  scroll-padding: 6px;
+  padding: 6px 0 10px;
 }
 
-.timeline-row::-webkit-scrollbar { height: 10px; }
-.timeline-row::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+.timeline-row::-webkit-scrollbar { display: none; }
 .empty-state { color: var(--muted); }
 
 .card {
@@ -207,10 +204,12 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 14px;
-  min-width: 280px;
-  max-width: 360px;
-  flex: 0 0 320px;
-  scroll-snap-align: start;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .card .date-top { color: var(--muted); font-size: 0.9rem; margin: 0 0 4px; }
@@ -293,10 +292,48 @@ label { display: block; font-weight: 600; margin-bottom: 8px; }
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 
   flex-shrink: 0;
   position: relative;
   z-index: 6;
+}
+
+.range-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(145deg, #f5f8ff, #ffffff);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8), 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.range-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+
+.range-btn:hover { color: var(--text); }
+
+.range-btn.active {
+  background: #ffffff;
+  color: var(--text);
+  box-shadow: 0 8px 22px rgba(79, 139, 255, 0.16);
+}
+
+.range-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .hero > div:first-child {

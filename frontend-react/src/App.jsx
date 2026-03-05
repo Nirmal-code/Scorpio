@@ -5,6 +5,11 @@ import remarkGfm from 'remark-gfm'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate, NavLink } from 'react-router-dom'
 import HoldingsPage from './HoldingsPage'
 
+const RANGE_OPTIONS = {
+  '1d': { label: 'Last day', days: 1 },
+  '7d': { label: 'Last week', days: 7 },
+}
+
 function Card({ item }) {
   return (
     <article className="card">
@@ -119,6 +124,8 @@ export default function App() {
   const [items, setItems] = useState([])
   const [refreshing, setRefreshing] = useState(false)
 
+  const [timeRange, setTimeRange] = useState('7d')
+
   const [userId, setUserId] = useState(null)
 
   const hasResults = items.length > 0
@@ -212,12 +219,13 @@ export default function App() {
     }
   }, [session?.user?.email])
 
-  const fetchRuns = async (uid) => {
+  const fetchRuns = async (uid, rangeKey = timeRange) => {
     if (!uid) return
     setError('')
     setRefreshing(true)
     try {
-      const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+      const days = RANGE_OPTIONS[rangeKey]?.days ?? 7
+      const sinceIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
       const { data: runs, error: runsErr } = await supabase
         .from('runs')
         .select('summary, created_at')
@@ -246,9 +254,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (userId) fetchRuns(userId)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
+    if (userId) fetchRuns(userId, timeRange)
+  }, [userId, timeRange])
 
   const handleGoogleLogin = async () => {
     try {
@@ -313,6 +320,7 @@ export default function App() {
   function SummariesPage() {
     const email = session?.user?.email
     const timelineRef = useRef(null)
+    const rangeLabel = RANGE_OPTIONS[timeRange]?.label || 'Last week'
 
     return (
       <div className="page">
@@ -320,15 +328,28 @@ export default function App() {
           <div>
             <p className="eyebrow">Scorpio · portfolio insights</p>
             <h1>Run summaries</h1>
-            <p className="sub">Showing the last 7 days for {email}</p>
+            <p className="sub">Showing {rangeLabel.toLowerCase()} for {email}</p>
             <p className="muted small">Runs are generated automatically around 9:00 AM and 9:00 PM ET each day.</p>
           </div>
 
           <div className="hero-actions">
+            <div className="range-toggle" role="group" aria-label="Filter by date range">
+              {Object.entries(RANGE_OPTIONS).map(([key, cfg]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`range-btn ${timeRange === key ? 'active' : ''}`}
+                  onClick={() => setTimeRange(key)}
+                  disabled={refreshing}
+                >
+                  {cfg.label}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               className="btn-primary compact"
-              onClick={() => fetchRuns(userId)}
+              onClick={() => fetchRuns(userId, timeRange)}
               disabled={!userId || refreshing}
             >
               {refreshing ? 'Refreshing…' : 'Refresh'}
@@ -342,7 +363,7 @@ export default function App() {
             <span className="pill">{countLabel}</span>
           </div>
 
-          {!refreshing && !hasResults && !error && <div className="empty-state">No results yet from the last 7 days.</div>}
+          {!refreshing && !hasResults && !error && <div className="empty-state">No results yet for {rangeLabel.toLowerCase()}.</div>}
           {error && <p className="error">{error}</p>}
 
           {hasResults && (
